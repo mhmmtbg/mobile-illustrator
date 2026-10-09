@@ -23,7 +23,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Sınıf yolunu topla
         run: |
-          ./gradlew -I ci/dump-classpath.init.gradle.kts :app:dumpClasspath :desktop:dumpClasspath 2>&1 | tee dump.log || true
+          ./gradlew -I ci/dump-classpath.init.gradle.kts :app:dumpClasspath :core-render:dumpClasspath :desktop:dumpClasspath 2>&1 | tee dump.log || true
           mkdir -p build/deps
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" > /dev/null || true
           cp "$ANDROID_HOME/platforms/android-36/android.jar" build/deps/android.jar || true

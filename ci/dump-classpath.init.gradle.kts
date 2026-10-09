@@ -4,7 +4,7 @@ allprojects {
     afterEvaluate {
         val projectName = name
         val configurationName = when (projectName) {
-            "app" -> "debugCompileClasspath"
+            "app", "core-render" -> "debugCompileClasspath"
             "desktop" -> "runtimeClasspath"
             else -> return@afterEvaluate
         }
@@ -12,8 +12,10 @@ allprojects {
             doLast {
                 val out = File(rootDir, "build/deps/$projectName").apply { deleteRecursively(); mkdirs() }
                 val configuration = configurations.getByName(configurationName)
-                val files = if (projectName == "app") {
+                val files = if (projectName != "desktop") {
                     configuration.incoming.artifactView {
+                        // Projenin kendi modülleri kaynak olarak derlenir; yalnızca dış kitaplıklar alınır.
+                        componentFilter { it !is ProjectComponentIdentifier }
                         attributes { attribute(Attribute.of("artifactType", String::class.java), "android-classes-jar") }
                     }.files
                 } else {
