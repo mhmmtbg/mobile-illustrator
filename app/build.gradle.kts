@@ -84,6 +84,11 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
+
+    // Kahve ısmarlama (tek seferlik satın alma) ve reklamlar
+    implementation(libs.play.billing)
+    implementation(libs.play.services.ads)
+    implementation(libs.play.ump)
     debugImplementation(libs.compose.ui.tooling)
 
     androidTestImplementation(platform(libs.compose.bom))

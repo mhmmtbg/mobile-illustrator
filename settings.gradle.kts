@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "mobile-illustrator"
 
-include(":app", ":core-model", ":core-render", ":io-svg", ":io-ai")
+include(":app", ":core-model", ":core-render", ":io-svg", ":io-ai", ":desktop")
