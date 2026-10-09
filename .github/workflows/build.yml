@@ -111,4 +111,4 @@ jobs:
         run: |
           ls shots/*.png > /dev/null 2>&1 || exit 0
           cp shots/ui.xml shots/ui.xml.txt 2>/dev/null || true
-          gh release upload "build-${VERSION_CODE}" shots/*.png shots/*.txt --clobber
+          gh release upload "build-${VERSION_CODE}" shots/*.png shots/*.txt $(ls shots/disa-aktarim.* 2>/dev/null) --clobber

@@ -95,10 +95,10 @@ shot 06-tasima
 # 4) Çizim araçları
 tap "Dikdörtgen"
 adb shell input swipe $((W * 10 / 100)) $((H * 22 / 100)) $((W * 35 / 100)) $((H * 30 / 100)) 500
-tap "#000000"
+tap "#FFFFFF"
 tap "Kontur"
-expect "Kontur kalınlığı" enabled true "kontur seçiliyken kalınlık kaydırıcısı görünmeli"
-tap "Renk yok"
+tap "#000000"
+expect "Kontur kalınlığı" enabled true "kontur rengi varken kalınlık kaydırıcısı görünmeli"
 tap "Dolgu"
 
 tap "Kalem"
@@ -140,6 +140,35 @@ expect "Yinele" enabled true "geri aldıktan sonra yinelenebilmeli"
 tap "Yinele"
 tap "Grubu çöz"
 shot 10-grup
+
+# 6b) Dışa aktarma: sistemin dosya kaydetme ekranı üzerinden. Bu ekran Android sürümüne göre değiştiği için
+# bulunamazsa test düşmez, yalnızca uyarı verir. Kaydedilen dosyalar incelenmek üzere çıktı klasörüne alınır.
+try_export() {
+  tap "Dosya menüsü"
+  tap "$1"
+  sleep 4
+  dump
+  local xy=""
+  for label in SAVE Save KAYDET Kaydet; do xy=$(node "$label" center) && break || true; done
+  if [ -z "$xy" ]; then
+    echo "::warning title=Duman testi::Kaydetme ekranı tanınmadı ($1)"
+    adb exec-out screencap -p > "$OUT/98-kaydet-$2.png" || true
+    adb shell input keyevent KEYCODE_BACK; sleep 2
+    has "Dosya menüsü" || { adb shell input keyevent KEYCODE_BACK; sleep 2; }
+    return 0
+  fi
+  adb shell input tap $xy
+  sleep 5
+  wait_for "Dosya menüsü"
+  local f
+  f=$(adb shell "find /sdcard/Download /sdcard/Documents -name 'Gopher*.$2' 2>/dev/null" | tr -d '\r' | head -n 1)
+  if [ -n "$f" ]; then adb pull "$f" "$OUT/disa-aktarim.$2" > /dev/null || true; else echo "::warning title=Duman testi::Kaydedilen dosya bulunamadı ($2)"; fi
+  alive "dışa aktarma $2"
+}
+try_export "Illustrator (.ai) olarak kaydet" ai
+try_export "PDF dışa aktar" pdf
+try_export "SVG dışa aktar" svg
+try_export "PNG dışa aktar" png
 
 # 7) Yatay ekran
 adb shell settings put system accelerometer_rotation 0
