@@ -44,8 +44,8 @@ jobs:
         if: failure()
         run: |
           [ -f build.log ] || exit 0
-          grep -E '^e: |^\* What went wrong|^> [^T]|^   > |^\s+(at|Caused by) .*mobileillustrator|AssertionError|Unresolved reference|error:|FAILED$' build.log \\
-            | grep -v '^> Task .* \(UP-TO-DATE\|FROM-CACHE\|SKIPPED\|NO-SOURCE\)$' \\
+          grep -E '^e: |^\* What went wrong|^> [^T]|^   > |^\s+(at|Caused by) .*mobileillustrator|AssertionError|Unresolved reference|error:|FAILED$' build.log \
+            | grep -v '^> Task .* \(UP-TO-DATE\|FROM-CACHE\|SKIPPED\|NO-SOURCE\)$' \
             | sed -e "s#file://${GITHUB_WORKSPACE}/##" | awk '!seen[$0]++' | head -n 60 > errors.txt || true
           [ -s errors.txt ] || tail -n 40 build.log > errors.txt
           split -l 12 errors.txt chunk_
