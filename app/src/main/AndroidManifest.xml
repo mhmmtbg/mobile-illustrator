@@ -6,16 +6,47 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:largeHeap="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.MobileIllustrator">
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Dosya yöneticilerinde "birlikte aç": türü bildirilen dosyalar -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/illustrator" />
+                <data android:mimeType="application/postscript" />
+                <data android:mimeType="application/vnd.adobe.illustrator" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/svg+xml" />
+            </intent-filter>
+
+            <!-- Türü bilinmeyen (.ai çoğu zaman böyle gelir) dosyalar: uzantıya göre -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:pathPattern=".*\\.ai" />
+                <data android:pathPattern=".*\\.AI" />
+                <data android:pathPattern=".*\\..*\\.ai" />
+                <data android:pathPattern=".*\\.svg" />
             </intent-filter>
         </activity>
     </application>

@@ -1,0 +1,6 @@
+gopher.ai
+
+The Go gopher was designed by Renee French (http://reneefrench.blogspot.com/).
+Vector illustration by Hugo Arganda (@argandas), from https://github.com/golang-samples/gopher-vector
+Licensed under the Creative Commons Attribution 3.0 license: https://creativecommons.org/licenses/by/3.0/
+The file is included unmodified.

@@ -26,6 +26,17 @@ data class Rect(val left: Double, val top: Double, val right: Double, val bottom
 
     fun union(o: Rect) = Rect(min(left, o.left), min(top, o.top), max(right, o.right), max(bottom, o.bottom))
 
+    /** Kesişim; kutular ayrıksa `null`. */
+    fun intersect(o: Rect): Rect? {
+        val l = max(left, o.left)
+        val t = max(top, o.top)
+        val r = min(right, o.right)
+        val b = min(bottom, o.bottom)
+        return if (l <= r && t <= b) Rect(l, t, r, b) else null
+    }
+
+    fun intersects(o: Rect): Boolean = left <= o.right && o.left <= right && top <= o.bottom && o.top <= bottom
+
     fun inflate(d: Double) = Rect(left - d, top - d, right + d, bottom + d)
 
     val corners: List<Vec2>

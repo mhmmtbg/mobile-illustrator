@@ -23,21 +23,36 @@ private fun Node.hit(point: Vec2, tolerance: Double, parent: Matrix): Boolean {
     if (!visible || locked) return false
     val m = parent * transform
     return when (this) {
-        is GroupNode -> children.asReversed().any { it.hit(point, tolerance, m) }
+        is GroupNode -> {
+            val c = clip
+            if (c != null && !insideRings(point, c.subpaths.map { it.transformed(m).flatten() }, c.rule)) {
+                false
+            } else {
+                children.asReversed().any { it.hit(point, tolerance, m) }
+            }
+        }
         is PathNode -> hitPath(point, tolerance, m)
+        is ImageNode -> {
+            val local = m.inverse()?.apply(point)
+            local != null && local.x >= 0 && local.y >= 0 && local.x <= image.width && local.y <= image.height
+        }
+        is TextNode -> {
+            val local = m.inverse()?.apply(point)
+            local != null && localBounds().contains(local)
+        }
     }
+}
+
+private fun insideRings(point: Vec2, rings: List<List<Vec2>>, rule: FillRule): Boolean = when (rule) {
+    FillRule.NonZero -> rings.sumOf { windingNumber(point, it) } != 0
+    FillRule.EvenOdd -> rings.sumOf { crossings(point, it) } % 2 != 0
 }
 
 private fun PathNode.hitPath(point: Vec2, tolerance: Double, m: Matrix): Boolean {
     val polys = subpaths.map { it.transformed(m).flatten() to it.closed }
     if (fill != null) {
         // Açık yollar da dolgu için kapalıymış gibi değerlendirilir (çizimle aynı).
-        val rings = polys.map { it.first }
-        val inside = when (fillRule) {
-            FillRule.NonZero -> rings.sumOf { windingNumber(point, it) } != 0
-            FillRule.EvenOdd -> rings.sumOf { crossings(point, it) } % 2 != 0
-        }
-        if (inside) return true
+        if (insideRings(point, polys.map { it.first }, fillRule)) return true
     }
     val reach = max(tolerance, (stroke?.let { it.width * m.meanScale / 2 } ?: 0.0) + tolerance)
     if (stroke == null && fill != null) return false

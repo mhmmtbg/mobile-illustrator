@@ -28,10 +28,23 @@ data class GradientStop(val offset: Double, val color: Rgba)
 sealed interface Paint {
     data class Solid(val color: Rgba) : Paint
 
-    /** Koordinatlar nesnenin yerel uzayındadır. */
-    data class LinearGradient(val start: Vec2, val end: Vec2, val stops: List<GradientStop>) : Paint
+    /**
+     * Koordinatlar gradyan uzayındadır; [transform] gradyan uzayını nesnenin yerel uzayına taşır
+     * (SVG'deki `gradientTransform`).
+     */
+    data class LinearGradient(
+        val start: Vec2,
+        val end: Vec2,
+        val stops: List<GradientStop>,
+        val transform: Matrix = Matrix.Identity,
+    ) : Paint
 
-    data class RadialGradient(val center: Vec2, val radius: Double, val stops: List<GradientStop>) : Paint
+    data class RadialGradient(
+        val center: Vec2,
+        val radius: Double,
+        val stops: List<GradientStop>,
+        val transform: Matrix = Matrix.Identity,
+    ) : Paint
 }
 
 enum class LineCap { Butt, Round, Square }
@@ -47,3 +60,17 @@ data class Stroke(
     val dash: List<Double> = emptyList(),
     val dashOffset: Double = 0.0,
 )
+
+/** Boyayı [m] ile dönüştürür (gradyanların yönü ve ölçeği nesneyle birlikte taşınsın diye). */
+fun Paint.transformedBy(m: Matrix): Paint = when (this) {
+    is Paint.Solid -> this
+    is Paint.LinearGradient -> copy(transform = m * transform)
+    is Paint.RadialGradient -> copy(transform = m * transform)
+}
+
+/** Gradyanlar için temsilî tek renk (ilk durak); arayüz göstergeleri için. */
+fun Paint.representativeColor(): Rgba = when (this) {
+    is Paint.Solid -> color
+    is Paint.LinearGradient -> stops.firstOrNull()?.color ?: Rgba.Black
+    is Paint.RadialGradient -> stops.firstOrNull()?.color ?: Rgba.Black
+}

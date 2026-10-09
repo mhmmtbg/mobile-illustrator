@@ -1,16 +1,20 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,16 +23,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,19 +52,25 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import io.github.mhmmtbg.mobileillustrator.R
+import io.github.mhmmtbg.mobileillustrator.editor.EditorState
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
+import io.github.mhmmtbg.mobileillustrator.editor.ExportFormat
 import io.github.mhmmtbg.mobileillustrator.editor.PaintTarget
 import io.github.mhmmtbg.mobileillustrator.editor.Tool
+import io.github.mhmmtbg.mobileillustrator.model.GroupNode
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
+import io.github.mhmmtbg.mobileillustrator.model.TextNode
+import io.github.mhmmtbg.mobileillustrator.model.ZMove
+import io.github.mhmmtbg.mobileillustrator.model.findNode
+import io.github.mhmmtbg.mobileillustrator.model.anchorAt
+import io.github.mhmmtbg.mobileillustrator.model.PathNode
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 private val Swatches = listOf(
@@ -56,140 +78,365 @@ private val Swatches = listOf(
     0x40C057, 0x3FA796, 0x3B9BFF, 0x3B6FE0, 0x7950F2, 0xE64980, 0x14213D, 0x8B5E34,
 ).map(Rgba::rgb)
 
+private class ToolSpec(val tool: Tool, val icon: ImageVector, val label: String)
+
+private val Tools = listOf(
+    ToolSpec(Tool.Select, AppIcons.Select, "Seçim"),
+    ToolSpec(Tool.Direct, AppIcons.Direct, "Doğrudan seçim"),
+    ToolSpec(Tool.Pen, AppIcons.Pen, "Kalem"),
+    ToolSpec(Tool.Pencil, AppIcons.Pencil, "Kurşun kalem"),
+    ToolSpec(Tool.Rectangle, AppIcons.Rectangle, "Dikdörtgen"),
+    ToolSpec(Tool.Ellipse, AppIcons.Ellipse, "Elips"),
+    ToolSpec(Tool.Line, AppIcons.Line, "Çizgi"),
+    ToolSpec(Tool.Text, AppIcons.Text, "Metin"),
+)
+
 @Composable
-fun EditorScreen(vm: EditorViewModel = viewModel()) {
-    Column(Modifier.fillMaxSize().background(AppColors.Panel)) {
-        TopBar(vm)
-        CanvasView(vm, Modifier.weight(1f).fillMaxWidth())
-        BottomPanel(vm)
+fun EditorScreen(vm: EditorViewModel) {
+    val state = vm.state
+    var exportFormat by rememberSaveable { mutableStateOf(ExportFormat.Ai) }
+    var showNew by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<String?>(null) }
+
+    val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::open) }
+    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(vm::placeImage) }
+    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        uri?.let { vm.export(it, exportFormat) }
+    }
+    fun export(format: ExportFormat) {
+        exportFormat = format
+        saveLauncher.launch(vm.suggestedFileName(format))
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(AppColors.Panel)) {
+        // Yatay telefonda araçlar yan şeride alınır; tuval yüksekliği korunur.
+        val rail = maxWidth > maxHeight && maxHeight < 560.dp
+        Column(Modifier.fillMaxSize()) {
+            TopBar(
+                vm,
+                onNew = { showNew = true },
+                onOpen = { openLauncher.launch(arrayOf("*/*")) },
+                onPlaceImage = { imageLauncher.launch("image/*") },
+                onExport = ::export,
+            )
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                if (rail) ToolRail(vm)
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    CanvasView(vm, Modifier.fillMaxSize())
+                    if (state.layersOpen) {
+                        LayersPanel(vm, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
+                    }
+                    state.busy?.let { BusyOverlay(it) }
+                    state.message?.let { msg ->
+                        LaunchedEffect(msg) {
+                            delay(2800)
+                            vm.messageShown()
+                        }
+                        Text(
+                            msg,
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(12.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xF0111113))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            color = AppColors.OnPanel,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = AppColors.Divider)
+            ContextBar(vm, onRename = { renaming = it })
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                    .padding(vertical = 4.dp),
+            ) {
+                PaintRow(vm, onCustomColor = { showPicker = true })
+                if (!rail) ToolRow(vm)
+            }
+        }
+    }
+
+    if (showNew) NewDocumentDialog(onDismiss = { showNew = false }) { w, h -> showNew = false; vm.newDocument(w, h) }
+    if (showPicker) {
+        val current = if (state.paintTarget == PaintTarget.Stroke) state.stroke else state.fill
+        ColorPickerDialog(current ?: Rgba.rgb(0x3B9BFF), onDismiss = { showPicker = false }) { showPicker = false; vm.setColor(it) }
+    }
+    renaming?.let { id ->
+        val node = state.history.present.findNode(id)
+        if (node == null) renaming = null else NameDialog("Yeniden adlandır", node.name, onDismiss = { renaming = null }) { renaming = null; vm.renameNode(id, it) }
+    }
+    state.textPrompt?.let { TextDialog(it, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText) }
+    if (state.warnings.isNotEmpty()) WarningsDialog(state.warnings, vm::dismissWarnings)
+}
+
+@Composable
+private fun BusyOverlay(label: String) {
+    // Görünmez tıklama alanı: iş sürerken tuvale dokunuşlar geçmesin.
+    Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(interactionSource = null, indication = null) {}, contentAlignment = Alignment.Center) {
+        Row(
+            Modifier.clip(RoundedCornerShape(12.dp)).background(AppColors.PanelRaised).padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(Modifier.size(22.dp), color = AppColors.Accent, strokeWidth = 2.5.dp)
+            Spacer(Modifier.width(14.dp))
+            Text(label, color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
 @Composable
-private fun TopBar(vm: EditorViewModel) {
+private fun TopBar(
+    vm: EditorViewModel,
+    onNew: () -> Unit,
+    onOpen: () -> Unit,
+    onPlaceImage: () -> Unit,
+    onExport: (ExportFormat) -> Unit,
+) {
     val state = vm.state
+    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .height(48.dp)
-            .padding(horizontal = 4.dp),
+            .height(48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box {
+            BarButton(AppIcons.Menu, "Dosya menüsü") { menu = true }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                @Composable
+                fun item(label: String, action: () -> Unit) =
+                    DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; action() })
+                item("Yeni belge…", onNew)
+                item("Aç… (.ai, .pdf, .svg)", onOpen)
+                item("Örnek dosyayı aç") { vm.openSample() }
+                item("Görsel yerleştir…", onPlaceImage)
+                HorizontalDivider()
+                item("Illustrator (.ai) olarak kaydet") { onExport(ExportFormat.Ai) }
+                item("PDF dışa aktar") { onExport(ExportFormat.Pdf) }
+                item("SVG dışa aktar") { onExport(ExportFormat.Svg) }
+                item("PNG dışa aktar") { onExport(ExportFormat.Png) }
+                HorizontalDivider()
+                item("Tümünü seç") { vm.selectAll() }
+            }
+        }
         Text(
             state.document.name,
-            Modifier.padding(start = 12.dp).weight(1f),
+            Modifier.padding(start = 4.dp).weight(1f),
             style = MaterialTheme.typography.titleSmall,
             color = AppColors.OnPanel,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            stringResource(R.string.zoom_percent, (vm.viewport.scale * 100).roundToInt()),
-            Modifier.padding(horizontal = 8.dp),
+            "%${(vm.viewport.scale * 100).roundToInt()}",
+            Modifier.padding(horizontal = 6.dp),
             style = MaterialTheme.typography.labelMedium,
             color = AppColors.OnPanelMuted,
         )
-        BarButton(AppIcons.Fit, stringResource(R.string.action_fit), onClick = vm::fitToScreen)
-        BarButton(AppIcons.Undo, stringResource(R.string.action_undo), enabled = state.history.canUndo, onClick = vm::undo)
-        BarButton(AppIcons.Redo, stringResource(R.string.action_redo), enabled = state.history.canRedo, onClick = vm::redo)
-        BarButton(
-            AppIcons.Delete,
-            stringResource(R.string.action_delete),
-            enabled = state.selection.isNotEmpty(),
-            onClick = vm::deleteSelection,
-        )
+        BarButton(AppIcons.Fit, "Ekrana sığdır", onClick = vm::fitToScreen)
+        BarButton(AppIcons.Undo, "Geri al", enabled = state.history.canUndo || state.pen != null, onClick = vm::undo)
+        BarButton(AppIcons.Redo, "Yinele", enabled = state.history.canRedo && state.pen == null, onClick = vm::redo)
+        BarButton(AppIcons.Layers, "Katmanlar", active = state.layersOpen, onClick = vm::toggleLayersPanel)
     }
 }
 
 @Composable
-private fun BarButton(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun BarButton(icon: ImageVector, label: String, enabled: Boolean = true, active: Boolean = false, onClick: () -> Unit) {
     // Etiket düğmenin kendisinde durur ki erişilebilirlik servisleri etkin/pasif durumunu doğru okusun.
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label; selected = active }) {
         Icon(
             icon,
             contentDescription = null,
-            tint = if (enabled) AppColors.OnPanel else AppColors.OnPanelMuted.copy(alpha = 0.4f),
+            tint = when {
+                !enabled -> AppColors.OnPanelMuted.copy(alpha = 0.4f)
+                active -> AppColors.Accent
+                else -> AppColors.OnPanel
+            },
         )
     }
 }
 
+/** Seçime ya da etkin araca göre değişen eylemler. Yapılacak bir şey yoksa yer kaplamaz. */
 @Composable
-private fun BottomPanel(vm: EditorViewModel) {
+private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit) {
     val state = vm.state
-    Column(
+    val actions = ArrayList<Pair<String, () -> Unit>>()
+    val doc = state.history.present
+    val edit = state.nodeEdit
+    when {
+        state.pen != null -> {
+            actions += "Bitir" to { vm.finishPen(close = false) }
+            if (state.pen.anchors.size >= 3) actions += "Kapat ve bitir" to { vm.finishPen(close = true) }
+            actions += "İptal" to vm::cancelPen
+        }
+        state.tool == Tool.Direct && edit?.anchor != null -> {
+            val anchor = (doc.findNode(edit.nodeId) as? PathNode)?.subpaths?.anchorAt(edit.anchor)
+            val curved = anchor != null && (anchor.handleIn != null || anchor.handleOut != null)
+            actions += (if (curved) "Köşeye çevir" else "Yumuşat") to vm::toggleSmoothAnchor
+            actions += "Düğümü sil" to vm::deleteSelection
+        }
+        state.selection.isNotEmpty() -> {
+            val nodes = state.selection.mapNotNull { doc.findNode(it) }
+            val single = nodes.singleOrNull()
+            if (single is TextNode) actions += "Metni düzenle" to vm::editSelectedText
+            actions += "Çoğalt" to vm::duplicateSelection
+            if (nodes.size >= 2) actions += "Grupla" to vm::groupSelection
+            if (nodes.any { it is GroupNode }) actions += "Grubu çöz" to vm::ungroupSelection
+            actions += "Öne" to { vm.reorderSelection(ZMove.Forward) }
+            actions += "Arkaya" to { vm.reorderSelection(ZMove.Backward) }
+            actions += "En öne" to { vm.reorderSelection(ZMove.Front) }
+            actions += "En arkaya" to { vm.reorderSelection(ZMove.Back) }
+            if (single != null) actions += "Adlandır" to { onRename(single.id) }
+            actions += "Sil" to vm::deleteSelection
+        }
+    }
+    if (actions.isEmpty()) return
+    Row(
         Modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-            .padding(vertical = 6.dp),
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (state.paintTarget == PaintTarget.Stroke && state.stroke != null) {
-            val label = stringResource(R.string.stroke_width)
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${(state.strokeWidth * 10).roundToInt() / 10.0} pt",
-                    Modifier.width(56.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = AppColors.OnPanelMuted,
-                )
-                Slider(
-                    value = state.strokeWidth.toFloat(),
-                    onValueChange = { vm.setStrokeWidth(snapWidth(it), commit = false) },
-                    onValueChangeFinished = { vm.setStrokeWidth(vm.state.strokeWidth, commit = true) },
-                    valueRange = 0.5f..60f,
-                    modifier = Modifier.weight(1f).semantics { contentDescription = label },
-                )
-            }
-        }
-
-        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            PaintTargetChip(stringResource(R.string.paint_fill), state.fill, state.paintTarget == PaintTarget.Fill) {
-                vm.selectPaintTarget(PaintTarget.Fill)
-            }
-            Spacer(Modifier.width(6.dp))
-            PaintTargetChip(stringResource(R.string.paint_stroke), state.stroke, state.paintTarget == PaintTarget.Stroke) {
-                vm.selectPaintTarget(PaintTarget.Stroke)
-            }
-            Spacer(Modifier.width(10.dp))
-            val current = if (state.paintTarget == PaintTarget.Fill) state.fill else state.stroke
-            Row(
-                Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(end = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SwatchButton(null, current == null, stringResource(R.string.paint_none)) { vm.setColor(null) }
-                for (c in Swatches) {
-                    SwatchButton(c, current == c, "#%06X".format(c.toArgb() and 0xFFFFFF)) { vm.setColor(c) }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            ToolButton(AppIcons.Select, stringResource(R.string.tool_select), state.tool == Tool.Select) { vm.selectTool(Tool.Select) }
-            ToolButton(AppIcons.Rectangle, stringResource(R.string.tool_rectangle), state.tool == Tool.Rectangle) { vm.selectTool(Tool.Rectangle) }
-            ToolButton(AppIcons.Ellipse, stringResource(R.string.tool_ellipse), state.tool == Tool.Ellipse) { vm.selectTool(Tool.Ellipse) }
-            ToolButton(AppIcons.Line, stringResource(R.string.tool_line), state.tool == Tool.Line) { vm.selectTool(Tool.Line) }
+        for ((label, action) in actions) {
+            Text(
+                label,
+                Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(AppColors.PanelRaised)
+                    .clickable(role = Role.Button, onClick = action)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                color = if (label == "Sil" || label == "Düğümü sil") Color(0xFFFF8A8A) else AppColors.OnPanel,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+            )
         }
     }
 }
 
-/** Kaydırıcı değerini yarım puanlık adımlara yuvarlar. */
-private fun snapWidth(v: Float): Double = (v * 2).roundToInt() / 2.0
+@Composable
+private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit) {
+    val state = vm.state
+    Column {
+        if (state.paintTarget == PaintTarget.Stroke && state.stroke != null) {
+            SliderRow(
+                label = "Kontur kalınlığı",
+                valueText = "${formatWidth(state.strokeWidth)} pt",
+                value = state.strokeWidth.toFloat(),
+                range = 0.25f..80f,
+                onChange = { vm.setStrokeWidth(snapWidth(it), done = false) },
+                onDone = { vm.setStrokeWidth(vm.state.strokeWidth, done = true) },
+            )
+        }
+        Row(Modifier.padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            PaintTargetChip("Dolgu", state.fill, state.paintTarget == PaintTarget.Fill) { vm.selectPaintTarget(PaintTarget.Fill) }
+            Spacer(Modifier.width(4.dp))
+            PaintTargetChip("Kontur", state.stroke, state.paintTarget == PaintTarget.Stroke) { vm.selectPaintTarget(PaintTarget.Stroke) }
+            Spacer(Modifier.width(4.dp))
+            OpacityChip(state, state.paintTarget == PaintTarget.Opacity) { vm.selectPaintTarget(PaintTarget.Opacity) }
+            Spacer(Modifier.width(6.dp))
+            if (state.paintTarget == PaintTarget.Opacity) {
+                Slider(
+                    value = state.opacity.toFloat(),
+                    onValueChange = { vm.setOpacity((it * 100).roundToInt() / 100.0, done = false) },
+                    onValueChangeFinished = { vm.setOpacity(vm.state.opacity, done = true) },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.weight(1f).padding(end = 16.dp).semantics { contentDescription = "Opaklık" },
+                )
+            } else {
+                val current = if (state.paintTarget == PaintTarget.Fill) state.fill else state.stroke
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SwatchButton(null, current == null, "Renk yok") { vm.setColor(null) }
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .clickable(role = Role.Button, onClick = onCustomColor)
+                            .semantics { contentDescription = "Özel renk" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(AppIcons.Add, null, Modifier.size(26.dp).border(1.5.dp, AppColors.OnPanelMuted, CircleShape).padding(3.dp), tint = AppColors.OnPanel)
+                    }
+                    for (c in Swatches) {
+                        SwatchButton(c, current == c, "#%06X".format(c.toArgb() and 0xFFFFFF)) { vm.setColor(c) }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
-private fun ToolButton(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
-    Box(
+private fun SliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, onDone: () -> Unit) {
+    Row(Modifier.padding(horizontal = 16.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(valueText, Modifier.width(60.dp), style = MaterialTheme.typography.labelMedium, color = AppColors.OnPanelMuted)
+        // Kalınlıkta ince değerler daha çok kullanılır: kaydırıcı karekök ölçeğinde ilerler.
+        val lo = kotlin.math.sqrt(range.start)
+        val hi = kotlin.math.sqrt(range.endInclusive)
+        Slider(
+            value = kotlin.math.sqrt(value.coerceIn(range.start, range.endInclusive)),
+            onValueChange = { onChange(it * it) },
+            onValueChangeFinished = onDone,
+            valueRange = lo..hi,
+            modifier = Modifier.weight(1f).semantics { contentDescription = label },
+        )
+    }
+}
+
+private fun snapWidth(v: Float): Double = if (v < 2f) (v * 4).roundToInt() / 4.0 else (v * 2).roundToInt() / 2.0
+
+private fun formatWidth(w: Double): String {
+    val r = (w * 100).roundToInt() / 100.0
+    return if (r == r.toLong().toDouble()) r.toLong().toString() else r.toString()
+}
+
+@Composable
+private fun ToolRow(vm: EditorViewModel) {
+    val active = vm.state.tool
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)) {
+        for (t in Tools) ToolButton(t, active == t.tool, Modifier.weight(1f).height(46.dp)) { vm.selectTool(t.tool) }
+    }
+}
+
+@Composable
+private fun ToolRail(vm: EditorViewModel) {
+    val active = vm.state.tool
+    Column(
         Modifier
-            .size(width = 64.dp, height = 48.dp)
+            .fillMaxHeight()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start))
+            .width(56.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        for (t in Tools) ToolButton(t, active == t.tool, Modifier.size(width = 48.dp, height = 44.dp)) { vm.selectTool(t.tool) }
+    }
+}
+
+@Composable
+private fun ToolButton(spec: ToolSpec, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .padding(horizontal = 2.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (active) AppColors.Accent else Color.Transparent)
             .clickable(role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = label; selected = active },
+            .semantics { contentDescription = spec.label; selected = active },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = if (active) Color(0xFF2B1A0E) else AppColors.OnPanel)
+        Icon(spec.icon, contentDescription = null, tint = if (active) Color(0xFF2B1A0E) else AppColors.OnPanel)
     }
 }
 
@@ -197,7 +444,7 @@ private fun ToolButton(icon: ImageVector, label: String, active: Boolean, onClic
 private fun PaintTargetChip(label: String, color: Rgba?, active: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
-            .height(48.dp)
+            .height(44.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (active) AppColors.PanelRaised else Color.Transparent)
             .border(1.dp, if (active) AppColors.Accent else Color.Transparent, RoundedCornerShape(10.dp))
@@ -206,9 +453,26 @@ private fun PaintTargetChip(label: String, color: Rgba?, active: Boolean, onClic
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ColorDot(color, Modifier.size(22.dp))
+        ColorDot(color, Modifier.size(20.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = AppColors.OnPanel)
+    }
+}
+
+@Composable
+private fun OpacityChip(state: EditorState, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (active) AppColors.PanelRaised else Color.Transparent)
+            .border(1.dp, if (active) AppColors.Accent else Color.Transparent, RoundedCornerShape(10.dp))
+            .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { contentDescription = "Opaklık ayarı"; selected = active }
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("%${(state.opacity * 100).roundToInt()}", style = MaterialTheme.typography.labelMedium, color = AppColors.OnPanel)
     }
 }
 
@@ -216,7 +480,7 @@ private fun PaintTargetChip(label: String, color: Rgba?, active: Boolean, onClic
 private fun SwatchButton(color: Rgba?, active: Boolean, label: String, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(48.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = label; selected = active },
@@ -229,11 +493,11 @@ private fun SwatchButton(color: Rgba?, active: Boolean, label: String, onClick: 
 
 /** Renk yoksa Illustrator'daki gibi üzeri kırmızı çizgili beyaz daire. */
 @Composable
-private fun ColorDot(color: Rgba?, modifier: Modifier = Modifier) {
+internal fun ColorDot(color: Rgba?, modifier: Modifier = Modifier) {
     Box(
         modifier
             .clip(CircleShape)
-            .background(color?.let { Color(it.toArgb()) } ?: Color.White)
+            .background(color?.let { Color(it.copy(a = 1.0).toArgb()) } ?: Color.White)
             .border(1.dp, Color(0x55FFFFFF), CircleShape)
             .drawBehind {
                 if (color == null) {

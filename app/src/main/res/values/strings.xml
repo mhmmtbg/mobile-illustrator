@@ -1,17 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Mobile Illustrator</string>
-    <string name="action_undo">Geri al</string>
-    <string name="action_redo">Yinele</string>
-    <string name="action_delete">Sil</string>
-    <string name="action_fit">Ekrana sığdır</string>
-    <string name="tool_select">Seçim</string>
-    <string name="tool_rectangle">Dikdörtgen</string>
-    <string name="tool_ellipse">Elips</string>
-    <string name="tool_line">Çizgi</string>
-    <string name="paint_fill">Dolgu</string>
-    <string name="paint_stroke">Kontur</string>
-    <string name="paint_none">Renk yok</string>
-    <string name="stroke_width">Kontur kalınlığı</string>
-    <string name="zoom_percent">%%%1$d</string>
 </resources>

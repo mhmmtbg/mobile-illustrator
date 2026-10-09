@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -21,14 +22,17 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
+import io.github.mhmmtbg.mobileillustrator.editor.Handle
+import io.github.mhmmtbg.mobileillustrator.editor.Tool
 import io.github.mhmmtbg.mobileillustrator.editor.Viewport
 import io.github.mhmmtbg.mobileillustrator.model.Rect
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
-import io.github.mhmmtbg.mobileillustrator.model.bounds
-import io.github.mhmmtbg.mobileillustrator.model.findNode
+import io.github.mhmmtbg.mobileillustrator.model.boundsOf
 import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 
 /**
@@ -39,11 +43,12 @@ import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
     val renderer = remember { DocumentRenderer() }
     val density = LocalDensity.current
-    val tolerancePx = with(density) { 12.dp.toPx() }
+    val tolerancePx = with(density) { 14.dp.toPx() }
     SideEffect { vm.touchTolerancePx = tolerancePx }
 
     Canvas(
         modifier
+            .semantics { contentDescription = "Tuval" }
             .onSizeChanged { vm.onCanvasSize(it.toSize()) }
             .pointerInput(vm) {
                 val slop = viewConfiguration.touchSlop
@@ -103,15 +108,77 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                 renderer.draw(native, document)
                 native.restoreToCount(count)
             }
-            for (ab in document.artboards) {
-                outline(ab.bounds, viewport, Color(0x66000000), 1.dp.toPx())
+            for (ab in document.artboards) outline(ab.bounds, viewport, Color(0x66000000), 1.dp.toPx())
+
+            val editing = vm.editedPath()
+            if (state.tool == Tool.Direct && editing != null) {
+                val (node, world) = editing
+                val selected = state.nodeEdit?.anchor
+                // Yolun iskeleti
+                for (sp in node.subpaths) {
+                    val pts = sp.transformed(world).flatten(12)
+                    for (i in 0 until pts.size - 1) {
+                        drawLine(AppColors.Selection, viewport.toScreen(pts[i]), viewport.toScreen(pts[i + 1]), 1.dp.toPx())
+                    }
+                    if (sp.closed && pts.size > 1) {
+                        drawLine(AppColors.Selection, viewport.toScreen(pts.last()), viewport.toScreen(pts.first()), 1.dp.toPx())
+                    }
+                }
+                for ((si, sp) in node.subpaths.withIndex()) {
+                    for ((ai, a) in sp.anchors.withIndex()) {
+                        val p = viewport.toScreen(world.apply(a.point))
+                        val isSel = selected != null && selected.subpath == si && selected.index == ai
+                        if (isSel) {
+                            for (h in listOfNotNull(a.handleIn, a.handleOut)) {
+                                val hp = viewport.toScreen(world.apply(h))
+                                drawLine(AppColors.Selection, p, hp, 1.dp.toPx())
+                                drawCircle(Color.White, 4.5.dp.toPx(), hp)
+                                drawCircle(AppColors.Selection, 4.5.dp.toPx(), hp, style = Stroke(1.5.dp.toPx()))
+                            }
+                        }
+                        anchorMark(p, filled = isSel)
+                    }
+                }
+            } else if (state.selection.isNotEmpty() && state.pen == null) {
+                document.boundsOf(state.selection)?.let { selectionBox(it, viewport, vm.rotateHandleOffsetPx(), state.tool == Tool.Select) }
             }
-            for (id in state.selection) {
-                val bounds = document.findNode(id)?.bounds() ?: continue
-                selectionBox(bounds, viewport)
+
+            state.pen?.let { pen ->
+                for ((i, a) in pen.anchors.withIndex()) {
+                    val p = viewport.toScreen(a.point)
+                    if (i == pen.anchors.size - 1) {
+                        for (h in listOfNotNull(a.handleIn, a.handleOut)) {
+                            val hp = viewport.toScreen(h)
+                            drawLine(AppColors.Selection, p, hp, 1.dp.toPx())
+                            drawCircle(AppColors.Selection, 3.5.dp.toPx(), hp)
+                        }
+                    }
+                    anchorMark(p, filled = i == pen.anchors.size - 1)
+                }
+                // İlk düğümün çevresindeki halka: buraya dokunmak yolu kapatır.
+                if (pen.anchors.size >= 2) {
+                    drawCircle(AppColors.Accent, 9.dp.toPx(), viewport.toScreen(pen.anchors[0].point), style = Stroke(1.5.dp.toPx()))
+                }
+            }
+
+            state.marquee?.let { m ->
+                val tl = viewport.toScreen(Vec2(m.left, m.top))
+                val size = Size((m.width * viewport.scale).toFloat(), (m.height * viewport.scale).toFloat())
+                drawRect(AppColors.Selection.copy(alpha = 0.12f), tl, size)
+                drawRect(
+                    AppColors.Selection, tl, size,
+                    style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
+                )
             }
         }
     }
+}
+
+private fun DrawScope.anchorMark(p: Offset, filled: Boolean) {
+    val half = 4.dp.toPx()
+    val tl = Offset(p.x - half, p.y - half)
+    drawRect(if (filled) AppColors.Selection else Color.White, tl, Size(half * 2, half * 2))
+    drawRect(AppColors.Selection, tl, Size(half * 2, half * 2), style = Stroke(1.5.dp.toPx()))
 }
 
 private fun DrawScope.outline(rect: Rect, viewport: Viewport, color: Color, width: Float) {
@@ -120,13 +187,17 @@ private fun DrawScope.outline(rect: Rect, viewport: Viewport, color: Color, widt
     drawRect(color, tl, size, style = Stroke(width))
 }
 
-private fun DrawScope.selectionBox(rect: Rect, viewport: Viewport) {
+private fun DrawScope.selectionBox(rect: Rect, viewport: Viewport, rotateOffset: Float, handles: Boolean) {
     outline(rect, viewport, AppColors.Selection, 1.5.dp.toPx())
-    val half = 4.dp.toPx()
-    for (corner in rect.corners) {
-        val c = viewport.toScreen(corner)
-        val tl = Offset(c.x - half, c.y - half)
-        drawRect(Color.White, tl, Size(half * 2, half * 2))
-        drawRect(AppColors.Selection, tl, Size(half * 2, half * 2), style = Stroke(1.5.dp.toPx()))
+    if (!handles) return
+    val top = viewport.toScreen(Handle.N.on(rect))
+    val rot = Offset(top.x, top.y - rotateOffset)
+    drawLine(AppColors.Selection, top, rot, 1.dp.toPx())
+    drawCircle(Color.White, 6.dp.toPx(), rot)
+    drawCircle(AppColors.Selection, 6.dp.toPx(), rot, style = Stroke(1.5.dp.toPx()))
+    val small = rect.width * viewport.scale < 56.dp.toPx() || rect.height * viewport.scale < 56.dp.toPx()
+    for (h in Handle.entries) {
+        if (small && !h.isCorner) continue
+        anchorMark(viewport.toScreen(h.on(rect)), filled = false)
     }
 }
