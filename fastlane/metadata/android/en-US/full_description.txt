@@ -1,0 +1,36 @@
+Layered vector drawing on your phone and tablet. Opens Illustrator (.ai), PDF and SVG files with their layers, lets you edit them, and saves back to .ai, PDF, SVG or PNG.
+
+FILES
+• Opens .ai (PDF-compatible), .pdf and .svg files; "Open with" from your file manager works too
+• Layers arrive with their names, visibility and locks; artboards are kept
+• Saves as .ai, PDF, SVG and transparent PNG
+• My documents: all your work in one place with thumbnails; autosave means nothing gets lost
+
+DRAWING AND EDITING
+• Pen (Bezier), pencil, rectangle, ellipse, line, text, eyedropper
+• Node editing: drag anchors and handles, add or delete anchors, switch between corner and smooth
+• Move, scale, rotate; numeric size and angle; flip horizontally and vertically
+• Align, distribute, and snap with smart guides
+• Shape operations: unite, subtract, intersect, exclude; clipping masks
+• Group, arrange, duplicate, 200 steps of undo
+
+COLOUR AND TEXT
+• Solid colours, linear and radial gradients, opacity; blend modes in a file are kept
+• Stroke width, caps and joins, dashed lines
+• CMYK colour picking for print; CMYK and spot colours in a file keep their values
+• Multi-line text, alignment, line spacing; load your own .ttf/.otf fonts; convert text to outlines
+
+TABLET AND PHONE
+• On tablets: a side tool rail and a docked layers panel
+• Two-finger pan and zoom
+• English and Turkish interface
+
+ADS
+The app is free and shows ads. "Buy the developer a coffee" is a one-time payment that removes ads for good.
+
+GOOD TO KNOW
+• Files must have been saved from Illustrator with "Create PDF Compatible File" (the default)
+• Live effects, symbols and brushes arrive flattened; mesh gradients and pattern fills are shown as a flat colour
+• CMYK colours on screen are an approximate preview
+
+This app is not affiliated with or endorsed by Adobe. Adobe and Illustrator are trademarks of Adobe.

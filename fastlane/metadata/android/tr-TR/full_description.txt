@@ -1,0 +1,36 @@
+Telefonunda ve tabletinde katmanlı vektör çizim. Illustrator (.ai), PDF ve SVG dosyalarını katmanlarıyla açar, düzenler ve yeniden .ai, PDF, SVG ya da PNG olarak kaydeder.
+
+DOSYALAR
+• .ai (PDF uyumlu), .pdf ve .svg dosyalarını açar; dosya yöneticisinden "birlikte aç" ile de çalışır
+• Dosyadaki katmanlar adları, görünürlükleri ve kilitleriyle gelir; çalışma yüzeyleri korunur
+• .ai, PDF, SVG ve saydam zeminli PNG olarak kaydeder
+• Belgelerim: tüm çalışmaların küçük resimleriyle tek yerde; otomatik kayıt sayesinde hiçbir şey kaybolmaz
+
+ÇİZİM VE DÜZENLEME
+• Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık
+• Düğüm düzenleme: düğümleri ve tutamaçları sürükle, düğüm ekle, sil, köşe ya da yumuşak yap
+• Taşı, ölçekle, döndür; sayısal boyut ve açı; yatay ve dikey çevir
+• Hizalama, dağıtma ve akıllı kılavuzlarla yakalama
+• Şekil işlemleri: birleştir, çıkar, kesiştir, dışla; kırpma maskesi
+• Gruplama, sıralama, çoğaltma, 200 adım geri alma
+
+RENK VE METİN
+• Düz renk, doğrusal ve dairesel gradyan, opaklık; dosyadaki karışım modları korunur
+• Kontur kalınlığı, uç ve köşe biçimleri, kesikli çizgi
+• Baskı için CMYK renk seçimi; dosyadaki CMYK ve spot renkler değerleriyle korunur
+• Çok satırlı metin, hizalama, satır aralığı; kendi .ttf/.otf fontunu yükle; metni yola çevir
+
+TABLET VE TELEFON
+• Tablette yan araç şeridi ve yana yerleşen katman paneli
+• İki parmakla kaydırma ve yakınlaştırma
+• Türkçe ve İngilizce arayüz
+
+REKLAMLAR
+Uygulama ücretsizdir ve reklam gösterir. "Geliştiriciye kahve ısmarla" seçeneğiyle tek seferlik bir ödeme yaparsan reklamlar kalıcı olarak kalkar.
+
+BİLMEN GEREKENLER
+• Dosyanın Illustrator'da "PDF uyumlu dosya oluştur" seçeneğiyle kaydedilmiş olması gerekir (varsayılan ayardır)
+• Canlı efektler, semboller ve fırçalar düzleştirilmiş halleriyle gelir; ağ gradyanlar ve desen dolguları düz renk olarak gösterilir
+• Ekrandaki CMYK renkleri yaklaşık bir önizlemedir
+
+Bu uygulama Adobe ile bağlantılı değildir ve Adobe tarafından desteklenmemektedir. Adobe ve Illustrator, Adobe'nin tescilli markalarıdır.

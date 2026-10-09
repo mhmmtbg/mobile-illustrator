@@ -1,0 +1,1 @@
+Layered vector drawing: open, edit and save AI, PDF and SVG files.
