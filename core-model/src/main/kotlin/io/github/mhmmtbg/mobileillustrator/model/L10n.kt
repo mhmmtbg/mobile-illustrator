@@ -283,6 +283,20 @@ object L10n {
         "Dış dosyaya bağlı görseller atlandı" to "Images linked to external files were skipped",
         "Desteklenmeyen gömülü görsel türü: %s" to "Unsupported embedded image type: %s",
         "Çok parçalı metinler tek satır olarak açıldı" to "Multi-part text was opened as a single line",
+        "Geliştiriciye kahve ısmarla ☕" to "Buy the developer a coffee ☕",
+        "Kahve için teşekkürler ☕" to "Thanks for the coffee ☕",
+        "Geliştiriciye kahve ısmarla" to "Buy the developer a coffee",
+        "Teşekkürler!" to "Thank you!",
+        "Kahven için teşekkürler. Reklamlar bu hesapta kalıcı olarak kapalı." to "Thanks for the coffee. Ads are permanently off for this account.",
+        "Uygulamayı beğendiysen bir kahve ısmarlayabilirsin. Tek seferlik bir ödemedir; reklamlar kalıcı olarak kalkar." to "If you like the app, you can buy me a coffee. It is a one-time payment and removes ads for good.",
+        "Kahve ısmarla (%s)" to "Buy a coffee (%s)",
+        "Mağazaya ulaşılamadı. Satın alma için uygulamanın Google Play'den kurulmuş olması gerekir." to "The store could not be reached. Purchases need the app to be installed from Google Play.",
+        "Kahven için teşekkürler! Reklamlar kaldırıldı." to "Thanks for the coffee! Ads have been removed.",
+        "Ödeme onaylanınca reklamlar kaldırılacak." to "Ads will be removed once the payment is confirmed.",
+        "Satın alma tamamlanamadı." to "The purchase could not be completed.",
+        "az önce" to "just now",
+        "%s dk önce" to "%s min ago",
+        "%s sa önce" to "%s h ago",
     )
 }
 

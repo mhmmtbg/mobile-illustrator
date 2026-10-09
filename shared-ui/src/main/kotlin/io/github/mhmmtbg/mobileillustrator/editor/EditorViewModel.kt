@@ -1,16 +1,11 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
 import io.github.mhmmtbg.mobileillustrator.model.tr
-import android.app.Application
-import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import io.github.mhmmtbg.mobileillustrator.App
 import io.github.mhmmtbg.mobileillustrator.model.Align
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.GradientSpec
@@ -85,6 +80,7 @@ import io.github.mhmmtbg.mobileillustrator.model.withName
 import io.github.mhmmtbg.mobileillustrator.model.withOpacity
 import io.github.mhmmtbg.mobileillustrator.model.withVisible
 import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -94,9 +90,11 @@ import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
 
-class EditorViewModel(app: Application) : AndroidViewModel(app) {
-
-    private val io = DocumentIo(app)
+/**
+ * Düzenleyicinin durumu ve işlemleri. Platformdan bağımsızdır: dosya işleri [io] üzerinden yapılır,
+ * eşzamanlı işler [scope] içinde (ana iş parçacığında) başlatılır.
+ */
+class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineScope) {
 
     var state by mutableStateOf(freshState(Document.blank(), DocSession(io.store.newId())))
         private set
@@ -113,6 +111,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private var canvasSize = Size.Zero
     private var fitPending = true
+
+    /** Görünüm "ekrana sığdır" durumunda mı (kullanıcı kaydırıp yakınlaştırmadıysa). */
+    private var fitted = false
     private var drag: Drag? = null
     private var autosaveJob: Job? = null
 
@@ -134,20 +135,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     init {
-        DocumentRenderer.customFonts = io.fonts::typeface
-        viewModelScope.launch {
+        scope.launch {
             fonts = withContext(Dispatchers.Default) { try { io.fonts.list() } catch (e: Throwable) { emptyList() } }
         }
         restoreLastDocument()
         // Önceki açılış çökmeyle bittiyse kaydı göster ve dosyayı sil (bir kez gösterilir).
-        viewModelScope.launch {
+        scope.launch {
             val report = withContext(Dispatchers.Default) {
-                try {
-                    val f = App.crashFile(getApplication())
-                    if (f.length() > 0) f.readText().take(20_000).also { f.delete() } else null
-                } catch (e: Throwable) {
-                    null
-                }
+                try { io.takeCrashReport() } catch (e: Throwable) { null }
             }
             if (report != null) state = state.copy(crashReport = report)
         }
@@ -157,7 +152,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         state = state.copy(crashReport = null)
     }
 
-    fun importFont(uri: Uri) = background(tr("Font yükleniyor…")) {
+    fun importFont(uri: String) = background(tr("Font yükleniyor…")) {
         val name = io.importFont(uri)
         val list = io.fonts.list()
         withContext(Dispatchers.Main) {
@@ -181,6 +176,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         if (fitPending) {
             fitPending = false
             fitToScreen()
+        } else if (old.width > 0 && old != size && fitted) {
+            // Belge ekrana sığdırılmış duruyordu (kullanıcı yakınlaştırmadı): yeni boyuta yeniden sığdır.
+            fitToScreen()
         } else if (old.width > 0 && old != size) {
             // Ekran döndü ya da panel açıldı: görünen merkez yerinde kalsın.
             val center = viewport.toDocument(Offset(old.width / 2, old.height / 2))
@@ -199,11 +197,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val scale = (min(canvasSize.width / bounds.width.toFloat(), canvasSize.height / bounds.height.toFloat()) * 0.92f)
             .coerceIn(Viewport.MIN_SCALE, Viewport.MAX_SCALE)
         val c = bounds.center
+        fitted = true
         viewport = Viewport(scale, Offset(canvasSize.width / 2 - c.x.toFloat() * scale, canvasSize.height / 2 - c.y.toFloat() * scale))
     }
 
     /** İki parmak hareketi: [centroid] etrafında [zoom] kadar yakınlaştırır, [pan] kadar kaydırır. */
     fun transformViewport(centroid: Offset, pan: Offset, zoom: Float) {
+        fitted = false
         val v = viewport
         val newScale = (v.scale * zoom).coerceIn(Viewport.MIN_SCALE, Viewport.MAX_SCALE)
         val k = newScale / v.scale
@@ -290,6 +290,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val now = viewport.toDocument(currentScreen)
         when (d) {
             is Drag.Pan -> {
+                fitted = false
                 viewport = viewport.copy(offset = viewport.offset + (currentScreen - d.last))
                 drag = d.copy(last = currentScreen)
             }
@@ -1185,7 +1186,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun open(uri: Uri) {
+    fun open(uri: String) {
         if (state.pen != null) finishPen()
         background(tr("Açılıyor…")) {
             val opened = io.open(uri)
@@ -1193,7 +1194,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             persistNow()
             val session = DocSession(
                 id = io.store.newId(),
-                linkUri = uri.toString(),
+                linkUri = uri,
                 linkFormat = opened.format,
                 // Başka programın dosyasının üzerine sorulmadan yazılmaz: ilk kayıtta yeni dosya adı istenir.
                 linkWritable = opened.result.writtenByThisApp,
@@ -1263,7 +1264,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val doc = present
         background(tr("Kaydediliyor…")) {
             try {
-                io.export(doc, Uri.parse(link), format)
+                io.export(doc, link, format)
             } catch (e: java.io.IOException) {
                 throw java.io.IOException(tr("%s. \"Farklı kaydet\" ile yeni bir dosyaya kaydedin.", e.message))
             }
@@ -1275,7 +1276,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** "Farklı kaydet": yeni dosyaya yazar ve belgeyi artık o dosyaya bağlar. */
-    fun saveAs(uri: Uri) {
+    fun saveAs(uri: String) {
         if (state.pen != null) finishPen()
         val doc = present
         background(tr("Kaydediliyor…")) {
@@ -1283,7 +1284,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             io.persistAccess(uri)
             withContext(Dispatchers.Main) {
                 state = state.copy(
-                    session = state.session.copy(linkUri = uri.toString(), linkFormat = ExportFormat.Ai, linkWritable = true, unsaved = present !== doc),
+                    session = state.session.copy(linkUri = uri, linkFormat = ExportFormat.Ai, linkWritable = true, unsaved = present !== doc),
                     message = tr("Kaydedildi"),
                 )
             }
@@ -1293,7 +1294,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Başka biçimde bir kopya yazar; belgenin bağlı olduğu dosya değişmez. */
-    fun export(uri: Uri, format: ExportFormat) {
+    fun export(uri: String, format: ExportFormat) {
         if (state.pen != null) finishPen()
         val doc = present
         background(tr("Dışa aktarılıyor…")) {
@@ -1302,7 +1303,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun placeImage(uri: Uri) = background(tr("Görsel ekleniyor…")) {
+    fun placeImage(uri: String) = background(tr("Görsel ekleniyor…")) {
         val image = io.readImage(uri)
         withContext(Dispatchers.Main) {
             val layer = drawingLayer() ?: run {
@@ -1324,7 +1325,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun background(label: String, block: suspend () -> Unit) {
         state = state.copy(busy = label)
-        viewModelScope.launch {
+        scope.launch {
             try {
                 withContext(Dispatchers.Default) { block() }
             } catch (e: Throwable) {
@@ -1372,7 +1373,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun scheduleAutosave() {
         autosaveJob?.cancel()
-        autosaveJob = viewModelScope.launch {
+        autosaveJob = scope.launch {
             delay(1500)
             withContext(Dispatchers.Default) {
                 try { persistNow() } catch (e: Throwable) { /* yer yoksa sessizce geç; bir sonraki değişiklikte yeniden denenir */ }
@@ -1384,7 +1385,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun restoreLastDocument() {
         state = state.copy(busy = tr("Son çalışma açılıyor…"))
-        viewModelScope.launch {
+        scope.launch {
             val restored = withContext(Dispatchers.Default) {
                 try {
                     io.store.migrateLegacy()
@@ -1415,6 +1416,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         backgroundScope.launch {
             try { persistNow() } catch (e: Throwable) { }
         }
+    }
+
+    /** Pencere kapanırken: bekleyen otomatik kaydı bitene kadar bekler (masaüstü). */
+    fun flushAutosaveNow() {
+        try { persistNow() } catch (e: Throwable) { }
     }
 
     private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)

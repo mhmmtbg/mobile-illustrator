@@ -18,12 +18,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -53,6 +59,7 @@ import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 @Composable
 fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
     val renderer = remember { DocumentRenderer() }
+    val imagePaint = remember { Paint() }
     val density = LocalDensity.current
     val tolerancePx = with(density) { 14.dp.toPx() }
     SideEffect { vm.touchTolerancePx = tolerancePx }
@@ -73,11 +80,26 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
         modifier
             .semantics { contentDescription = tr("Tuval") }
             .onSizeChanged { vm.onCanvasSize(it.toSize()) }
+            // Fare tekerleği: imlecin bulunduğu noktaya doğru yakınlaştırır.
+            .pointerInput(vm) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type != PointerEventType.Scroll) continue
+                        val change = event.changes.firstOrNull() ?: continue
+                        val dy = change.scrollDelta.y
+                        if (dy != 0f) vm.transformViewport(change.position, Offset.Zero, if (dy < 0f) 1.12f else 1f / 1.12f)
+                        change.consume()
+                    }
+                }
+            }
             .pointerInput(vm) {
                 val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    var multiTouch = false
+                    // Fare: sağ ya da orta tuşla sürüklemek tuvali kaydırır.
+                    val mousePan = currentEvent.buttons.isSecondaryPressed || currentEvent.buttons.isTertiaryPressed
+                    var multiTouch = mousePan
                     var dragging = false
                     var finished = false
                     while (!finished) {
@@ -85,6 +107,12 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                         val pressed = event.changes.filter { it.pressed }
                         when {
                             pressed.isEmpty() -> finished = true
+                            mousePan -> {
+                                gesturing = true
+                                val change = pressed.first()
+                                vm.transformViewport(change.position, change.position - change.previousPosition, 1f)
+                                change.consume()
+                            }
                             pressed.size >= 2 -> {
                                 if (!multiTouch) {
                                     multiTouch = true
@@ -139,19 +167,19 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
             val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(size.width, size.height)))
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
-                if (still != null) native.drawBitmap(still, 0f, 0f, null)
-                val count = native.save()
-                native.translate(viewport.offset.x, viewport.offset.y)
-                native.scale(viewport.scale, viewport.scale)
+                if (still != null) canvas.drawImage(still, Offset.Zero, imagePaint)
+                canvas.save()
+                canvas.translate(viewport.offset.x, viewport.offset.y)
+                canvas.scale(viewport.scale, viewport.scale)
                 when {
-                    cached != null -> cached.draw(native)
+                    cached != null -> cached.draw(canvas)
                     still != null -> for (layer in document.layers) {
                         if (!layer.visible) continue
                         for (node in layer.children) if (node.id in moving) renderer.drawNode(native, node)
                     }
                     else -> renderer.draw(native, document, visible = visible)
                 }
-                native.restoreToCount(count)
+                canvas.restore()
             }
             for (ab in document.artboards) outline(ab.bounds, viewport, Color(0x66000000), 1.dp.toPx())
 
@@ -261,12 +289,16 @@ private fun DrawScope.selectionBox(rect: Rect, viewport: Viewport, rotateOffset:
 }
 
 /** Belgenin çalışma yüzeylerini kapsayan, önceden çizilmiş görüntüsü. */
-private class RasterCache(val document: Document, private val bitmap: android.graphics.Bitmap, private val bounds: Rect) {
-    private val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
-    private val dst = android.graphics.RectF(bounds.left.toFloat(), bounds.top.toFloat(), bounds.right.toFloat(), bounds.bottom.toFloat())
+private class RasterCache(val document: Document, private val image: ImageBitmap, private val bounds: Rect, private val scale: Float) {
+    private val paint = Paint().apply { filterQuality = FilterQuality.Low }
 
-    fun draw(canvas: android.graphics.Canvas) {
-        canvas.drawBitmap(bitmap, null, dst, paint)
+    /** [canvas] belge koordinatında olmalıdır. */
+    fun draw(canvas: androidx.compose.ui.graphics.Canvas) {
+        canvas.save()
+        canvas.translate(bounds.left.toFloat(), bounds.top.toFloat())
+        canvas.scale(1f / scale, 1f / scale)
+        canvas.drawImage(image, Offset.Zero, paint)
+        canvas.restore()
     }
 
     companion object {
@@ -278,17 +310,17 @@ private class RasterCache(val document: Document, private val bitmap: android.gr
             if (document.nodeCount() < HEAVY_NODE_COUNT) return null
             val box = document.artboardBounds()?.let { it.inflate(maxOf(it.width, it.height) * 0.08) } ?: return null
             if (box.width <= 0 || box.height <= 0) return null
-            val scale = MAX_SIDE / maxOf(box.width, box.height)
+            val scale = (MAX_SIDE / maxOf(box.width, box.height)).toFloat()
             val w = (box.width * scale).toInt().coerceAtLeast(1)
             val h = (box.height * scale).toInt().coerceAtLeast(1)
             return try {
-                val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(bmp)
-                canvas.scale(scale.toFloat(), scale.toFloat())
+                val image = ImageBitmap(w, h)
+                val canvas = androidx.compose.ui.graphics.Canvas(image)
+                canvas.scale(scale, scale)
                 canvas.translate(-box.left.toFloat(), -box.top.toFloat())
                 // Arka plan iş parçacığında çalışır; ekran çizicisiyle durum paylaşmamak için ayrı bir çizici kullanılır.
-                DocumentRenderer().draw(canvas, document)
-                RasterCache(document, bmp, box)
+                DocumentRenderer().draw(canvas.nativeCanvas, document)
+                RasterCache(document, image, box, scale)
             } catch (e: Throwable) {
                 null // bellek yetmezse önbelleksiz devam
             }
@@ -298,38 +330,39 @@ private class RasterCache(val document: Document, private val bitmap: android.gr
 
 /** Sürükleme sırasında yerinde duran nesnelerin, ekran boyutunda bir kez çizilmiş görüntüsü. */
 private class DragBackdrop {
-    private var bitmap: android.graphics.Bitmap? = null
+    private var image: ImageBitmap? = null
     private var base: Document? = null
     private var ids: Set<String>? = null
     private var viewport: Viewport? = null
     private val renderer = DocumentRenderer()
+    private val clear = Paint().apply { color = AppColors.Pasteboard }
 
     fun clear() {
-        if (bitmap == null) return
-        bitmap = null
+        if (image == null) return
+        image = null
         base = null
         ids = null
     }
 
     /** Hafif belgelerde `null` döner; onlarda her şeyi her karede çizmek zaten akıcıdır. */
-    fun get(base: Document, ids: Set<String>, viewport: Viewport, width: Int, height: Int): android.graphics.Bitmap? {
-        val have = bitmap
+    fun get(base: Document, ids: Set<String>, viewport: Viewport, width: Int, height: Int): ImageBitmap? {
+        val have = image
         if (have != null && this.base === base && this.ids === ids && this.viewport == viewport && have.width == width && have.height == height) return have
         if (width <= 0 || height <= 0) return null
         if (this.base !== base && base.layers.sumOf { it.children.size } < HEAVY) return null
         return try {
-            val bmp = if (have != null && have.width == width && have.height == height) have else android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bmp)
-            canvas.drawColor(0xFF3A3A3D.toInt())
+            val img = if (have != null && have.width == width && have.height == height) have else ImageBitmap(width, height)
+            val canvas = androidx.compose.ui.graphics.Canvas(img)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), clear)
             canvas.translate(viewport.offset.x, viewport.offset.y)
             canvas.scale(viewport.scale, viewport.scale)
             val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(width.toFloat(), height.toFloat())))
-            renderer.draw(canvas, base, visible = visible, skip = ids)
-            bitmap = bmp
+            renderer.draw(canvas.nativeCanvas, base, visible = visible, skip = ids)
+            image = img
             this.base = base
             this.ids = ids
             this.viewport = viewport
-            bmp
+            img
         } catch (e: Throwable) {
             null
         }

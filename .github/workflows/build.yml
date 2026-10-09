@@ -1,4 +1,4 @@
-name: Build APK
+name: Build
 
 on:
   push:
@@ -24,6 +24,9 @@ jobs:
       SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
       SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
       SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      # Reklam kimlikleri (isteğe bağlı): tanımlı değilse Google'ın deneme kimlikleri kullanılır.
+      ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+      ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -45,10 +48,16 @@ jobs:
           set -o pipefail
           ./gradlew :core-model:test :io-svg:test :io-ai:test --rerun-tasks 2>&1 | tee -a build.log
 
+      # Windows sürümünün çizicisi ve ekranı burada, pencere açmadan da denenir (hata erken görülsün).
+      - name: Masaüstü testleri
+        run: |
+          set -o pipefail
+          ./gradlew :desktop:test 2>&1 | tee -a build.log
+
       - name: APK derle
         run: |
           set -o pipefail
-          ./gradlew :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee -a build.log
+          ./gradlew :app:assembleRelease :app:bundleRelease :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee -a build.log
 
       # Hata satırlarını çalışmanın özetine not olarak düşer; log indirmeden okunabilir.
       - name: Hata özeti
@@ -70,6 +79,8 @@ jobs:
           mkdir -p dist/test
           # Yayımlanan dosya küçültülmüş sürüm derlemesidir; hata ayıklama derlemesi yalnızca testlerde kullanılır.
           cp app/build/outputs/apk/release/app-release.apk "dist/mobile-illustrator-${VERSION_CODE}.apk"
+          # Google Play'e yüklenen paket (AAB). Mağaza yalnızca kendi anahtarınla imzalanmış paketi kabul eder.
+          cp app/build/outputs/bundle/release/app-release.aab "dist/mobile-illustrator-${VERSION_CODE}.aab"
           cp app/build/outputs/apk/debug/app-debug.apk dist/test/app-debug.apk
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/test/app-debug-androidTest.apk
           ls -la dist dist/test
@@ -86,11 +97,83 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "build-${VERSION_CODE}" dist/*.apk \
+          gh release create "build-${VERSION_CODE}" dist/*.apk dist/*.aab \
             --target "${GITHUB_SHA}" \
             --title "Derleme ${VERSION_CODE}" \
             --notes "$(git log -1 --pretty=%B)" \
             --latest
+
+  # Windows sürümü: kurulum dosyası (.exe) ve kurulumsuz paket (.zip). Paketlenen uygulama gerçekten
+  # çalıştırılır: pencere açılır, örnek dosya yüklenir ve PNG olarak dışa aktarılır.
+  windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test et ve paketle
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :desktop:test :desktop:createDistributable :desktop:packageExe 2>&1 | tee build.log
+
+      - name: Hata özeti
+        if: failure()
+        shell: bash
+        run: |
+          [ -f build.log ] || exit 0
+          grep -E '^e: |^\* What went wrong|^> [^T]|^   > |AssertionError|Unresolved reference|error:|FAILED$|Exception' build.log | awk '!seen[$0]++' | head -n 40 > errors.txt || true
+          [ -s errors.txt ] || tail -n 40 build.log > errors.txt
+          split -l 12 errors.txt chunk_
+          for f in chunk_*; do
+            msg=$(sed -e 's/%/%25/g' "$f" | awk 'BEGIN{ORS="%0A"} {print}')
+            echo "::error title=Windows derleme hatası::${msg}"
+          done
+
+      - name: Paketlenen uygulamayı çalıştır
+        shell: pwsh
+        run: |
+          $app = "desktop/build/compose/binaries/main/app/Mobile Illustrator/Mobile Illustrator.exe"
+          if (-not (Test-Path $app)) { Write-Output "::error title=Windows::Uygulama dosyası yok"; exit 1 }
+          $out = Join-Path $PWD "windows-self-test.png"
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP "appdata"
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $p = Start-Process -FilePath $app -ArgumentList "--self-test", "`"$out`"" -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Output "::error title=Windows::Uygulama 2 dakikada yanıt vermedi"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Output "::error title=Windows::Uygulama $($p.ExitCode) koduyla kapandı"; Get-ChildItem $env:APPDATA -Recurse -Filter last-crash.txt | Get-Content | Select-Object -First 30; exit 1 }
+          if (-not (Test-Path $out) -or (Get-Item $out).Length -lt 10000) { Write-Output "::error title=Windows::Dışa aktarılan PNG oluşmadı"; exit 1 }
+          Write-Output "::notice title=Windows sürümü::Paketlenen uygulama açıldı, örnek dosyayı yükledi ve PNG yazdı ($((Get-Item $out).Length) bayt)"
+
+      - name: Dosyaları adlandır
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp desktop/build/compose/binaries/main/exe/*.exe "dist/mobile-illustrator-setup-${VERSION_CODE}.exe"
+          (cd desktop/build/compose/binaries/main/app && 7z a -tzip -mx=7 "$GITHUB_WORKSPACE/dist/mobile-illustrator-windows-${VERSION_CODE}.zip" "Mobile Illustrator" > /dev/null)
+          cp windows-self-test.png dist/windows-self-test.png
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-illustrator-windows
+          path: dist
+
+      - name: Release'e ekle
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: gh release upload "build-${VERSION_CODE}" dist/* --clobber
 
   # APK'yı emülatörde açıp temel akışı dener; ekran görüntülerini Release'e ekler.
   smoke:

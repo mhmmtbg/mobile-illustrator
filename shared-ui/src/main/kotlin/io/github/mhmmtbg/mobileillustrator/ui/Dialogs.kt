@@ -187,7 +187,7 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
 
 @Composable
 fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Unit) {
-    val hsv0 = remember { FloatArray(3).also { android.graphics.Color.colorToHSV(initial.copy(a = 1.0).toArgb(), it) } }
+    val hsv0 = remember { argbToHsv(initial.copy(a = 1.0).toArgb()) }
     var hue by remember { mutableStateOf(hsv0[0]) }
     var sat by remember { mutableStateOf(hsv0[1]) }
     var value by remember { mutableStateOf(hsv0[2]) }
@@ -200,7 +200,7 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
     var m by remember { mutableStateOf((start?.m ?: 0.0).toFloat()) }
     var y by remember { mutableStateOf((start?.y ?: 0.0).toFloat()) }
     var k by remember { mutableStateOf((start?.k ?: 0.0).toFloat()) }
-    fun argb() = android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value))
+    fun argb() = hsvToArgb(hue, sat, value)
     fun syncHex() { hex = "%06X".format(argb() and 0xFFFFFF) }
     fun cmyk() = Ink.Cmyk(c.toDouble(), m.toDouble(), y.toDouble(), k.toDouble())
     fun step(v: Float) = (v * 100).toInt() / 100f
@@ -243,8 +243,7 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
                             val clean = raw.removePrefix("#").filter { it.isLetterOrDigit() }.take(6).uppercase()
                             hex = clean
                             if (clean.length == 6) clean.toIntOrNull(16)?.let { rgb ->
-                                val hsv = FloatArray(3)
-                                android.graphics.Color.colorToHSV(rgb or (0xFF shl 24), hsv)
+                                val hsv = argbToHsv(rgb)
                                 hue = hsv[0]; sat = hsv[1]; value = hsv[2]
                             }
                         },
@@ -455,5 +454,31 @@ fun CrashDialog(onShare: () -> Unit, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onShare) { Text(tr("Raporu paylaş")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Kapat")) } },
+    )
+}
+
+/** "Geliştiriciye kahve ısmarla": tek seferlik satın alma; reklamları kalıcı olarak kaldırır. */
+@Composable
+fun CoffeeDialog(coffee: CoffeeState, onDismiss: () -> Unit, onBuy: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (coffee.purchased) tr("Teşekkürler!") else tr("Geliştiriciye kahve ısmarla")) },
+        text = {
+            Text(
+                if (coffee.purchased) {
+                    tr("Kahven için teşekkürler. Reklamlar bu hesapta kalıcı olarak kapalı.")
+                } else {
+                    tr("Uygulamayı beğendiysen bir kahve ısmarlayabilirsin. Tek seferlik bir ödemedir; reklamlar kalıcı olarak kalkar.")
+                },
+            )
+        },
+        confirmButton = {
+            if (coffee.purchased) {
+                TextButton(onClick = onDismiss) { Text(tr("Tamam")) }
+            } else {
+                TextButton(onClick = onBuy) { Text(tr("Kahve ısmarla (%s)", coffee.price ?: "₺99,99")) }
+            }
+        },
+        dismissButton = { if (!coffee.purchased) TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
 }

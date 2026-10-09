@@ -2,8 +2,6 @@ package io.github.mhmmtbg.mobileillustrator.ui
 
 import io.github.mhmmtbg.mobileillustrator.model.trName
 import io.github.mhmmtbg.mobileillustrator.model.tr
-import android.graphics.BitmapFactory
-import android.text.format.DateUtils
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -55,6 +52,7 @@ import io.github.mhmmtbg.mobileillustrator.editor.StoredDocument
 /** "Belgelerim": uygulamada duran tüm belgeler. Her şey sürekli otomatik kaydedildiği için burada kayıp olmaz. */
 @Composable
 fun GalleryScreen(
+    host: PlatformHost,
     documents: List<StoredDocument>,
     currentId: String,
     onOpen: (String) -> Unit,
@@ -81,7 +79,7 @@ fun GalleryScreen(
         }
         HorizontalDivider(color = AppColors.Divider)
         if (documents.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().weight(1f).padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
                     tr("Henüz kayıtlı belge yok. Çizmeye başladığında ya da bir dosya açtığında burada görünür."),
                     color = AppColors.OnPanelMuted,
@@ -90,16 +88,18 @@ fun GalleryScreen(
             }
         } else {
             LazyVerticalGrid(
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 columns = GridCells.Adaptive(150.dp),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(documents, key = { it.id }) { doc ->
-                    DocumentCard(doc, current = doc.id == currentId, onOpen = { onOpen(doc.id) }, onDelete = { deleting = doc })
+                    DocumentCard(host, doc, current = doc.id == currentId, onOpen = { onOpen(doc.id) }, onDelete = { deleting = doc })
                 }
             }
         }
+        host.AdBanner(Modifier.fillMaxWidth())
     }
     deleting?.let { doc ->
         AlertDialog(
@@ -136,11 +136,11 @@ private fun GalleryAction(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DocumentCard(doc: StoredDocument, current: Boolean, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun DocumentCard(host: PlatformHost, doc: StoredDocument, current: Boolean, onOpen: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     // Küçük resim küçük bir dosyadır; değişince (modified) yeniden okunur.
     val thumb = remember(doc.id, doc.modified) {
-        try { BitmapFactory.decodeFile(doc.thumbnail.path)?.asImageBitmap() } catch (e: Throwable) { null }
+        try { host.loadThumbnail(doc.thumbnail) } catch (e: Throwable) { null }
     }
     Column(
         Modifier
@@ -158,7 +158,7 @@ private fun DocumentCard(doc: StoredDocument, current: Boolean, onOpen: () -> Un
         Row(Modifier.padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(trName(doc.name), color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val whenText = DateUtils.getRelativeTimeSpanString(doc.modified, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
+                val whenText = host.relativeTime(doc.modified)
                 val status = when {
                     doc.linkUri == null -> tr("yalnızca uygulamada")
                     doc.unsaved -> tr("dosyaya kaydedilmedi")

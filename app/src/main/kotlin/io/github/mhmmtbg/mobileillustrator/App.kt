@@ -12,6 +12,10 @@ import java.io.StringWriter
  * kullanıcıya gösterilir ve isterse paylaşabilir. Hiçbir veri kendiliğinden bir yere gönderilmez.
  */
 class App : Application() {
+    /** Kahve ısmarlama (satın alma) ve reklamlar; etkinlik yeniden kurulsa da aynı kalır. */
+    val monetization by lazy { io.github.mhmmtbg.mobileillustrator.platform.Monetization(this) }
+    val ads by lazy { io.github.mhmmtbg.mobileillustrator.platform.Ads(this) }
+
     override fun onCreate() {
         super.onCreate()
         applyLanguage(this)

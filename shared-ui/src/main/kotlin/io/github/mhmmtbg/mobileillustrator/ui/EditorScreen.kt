@@ -1,14 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
 import io.github.mhmmtbg.mobileillustrator.model.trName
-import io.github.mhmmtbg.mobileillustrator.App
-import io.github.mhmmtbg.mobileillustrator.model.L10n
 import io.github.mhmmtbg.mobileillustrator.model.tr
-import android.content.Intent
-import androidx.activity.compose.BackHandler
-import androidx.compose.ui.platform.LocalContext
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -104,26 +97,16 @@ private val Tools = listOf(
 )
 
 @Composable
-fun EditorScreen(vm: EditorViewModel) {
+fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
     val state = vm.state
-    val activity = LocalContext.current as android.app.Activity
-    var exportFormat by rememberSaveable { mutableStateOf(ExportFormat.Ai) }
     var showNew by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    var showCoffee by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<String?>(null) }
 
-    val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::open) }
-    val fontLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importFont) }
-    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(vm::placeImage) }
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        uri?.let { vm.export(it, exportFormat) }
-    }
-    val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri -> uri?.let(vm::saveAs) }
-    fun export(format: ExportFormat) {
-        exportFormat = format
-        exportLauncher.launch(vm.suggestedFileName(format))
-    }
-    fun saveAs() = saveAsLauncher.launch(vm.suggestedFileName(ExportFormat.Ai))
+    fun openFile() = host.pickDocument(vm::open)
+    fun export(format: ExportFormat) = host.pickSaveLocation(vm.suggestedFileName(format)) { vm.export(it, format) }
+    fun saveAs() = host.pickSaveLocation(vm.suggestedFileName(ExportFormat.Ai), vm::saveAs)
     // Başka programın dosyası açıksa üzerine yazılmaz; ilk kayıtta yeni dosya adı sorulur.
     fun save() = if (vm.canSaveInPlace) vm.save() else saveAs()
     var renamingDocument by remember { mutableStateOf(false) }
@@ -132,7 +115,7 @@ fun EditorScreen(vm: EditorViewModel) {
     var showTransform by remember { mutableStateOf(false) }
 
     // Geri tuşu önce açık panelleri kapatır.
-    BackHandler(enabled = state.gallery != null || state.layersOpen) {
+    host.BackHandler(enabled = state.gallery != null || state.layersOpen) {
         if (state.gallery != null) vm.hideGallery() else vm.toggleLayersPanel()
     }
 
@@ -145,17 +128,18 @@ fun EditorScreen(vm: EditorViewModel) {
             TopBar(
                 vm,
                 onNew = { showNew = true },
-                onOpen = { openLauncher.launch(arrayOf("*/*")) },
-                onPlaceImage = { imageLauncher.launch("image/*") },
+                onOpen = ::openFile,
+                onPlaceImage = { host.pickImage(vm::placeImage) },
                 onSave = ::save,
                 onSaveAs = ::saveAs,
                 onRename = { renamingDocument = true },
                 onExport = ::export,
-                onToggleLanguage = {
-                    App.setLanguage(activity.application, if (L10n.english) "tr" else "en")
-                    activity.recreate()
-                },
+                onToggleLanguage = host::toggleLanguage,
+                coffee = host.coffee,
+                onCoffee = { showCoffee = true },
             )
+            // Reklam şeridi: kahve ısmarlanınca kalkar. Belgelerim açıkken oradaki şerit görünür.
+            if (state.gallery == null) host.AdBanner(Modifier.fillMaxWidth().padding(vertical = 4.dp))
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 if (rail) ToolRail(vm)
                 Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -200,12 +184,13 @@ fun EditorScreen(vm: EditorViewModel) {
 
     state.gallery?.let { docs ->
         GalleryScreen(
+            host = host,
             documents = docs,
             currentId = state.session.id,
             onOpen = vm::openStored,
             onDelete = vm::deleteStored,
             onNew = { vm.hideGallery(); showNew = true },
-            onImport = { vm.hideGallery(); openLauncher.launch(arrayOf("*/*")) },
+            onImport = { vm.hideGallery(); openFile() },
             onClose = vm::hideGallery,
         )
     }
@@ -233,19 +218,20 @@ fun EditorScreen(vm: EditorViewModel) {
         if (node == null) renaming = null else NameDialog(tr("Yeniden adlandır"), node.name, onDismiss = { renaming = null }) { renaming = null; vm.renameNode(id, it) }
     }
     state.textPrompt?.let {
-        TextDialog(it, vm.fonts, onLoadFont = { fontLauncher.launch(arrayOf("*/*")) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
+        TextDialog(it, vm.fonts, onLoadFont = { host.pickFont(vm::importFont) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
     }
     if (state.warnings.isNotEmpty()) WarningsDialog(state.warnings, vm::dismissWarnings)
     state.crashReport?.let { report ->
-        val context = LocalContext.current
         CrashDialog(
             onShare = {
                 vm.dismissCrashReport()
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, tr("Mobile Illustrator çökme raporu")).putExtra(Intent.EXTRA_TEXT, report)
-                try { context.startActivity(Intent.createChooser(send, tr("Raporu paylaş"))) } catch (e: Exception) { /* paylaşacak uygulama yok */ }
+                host.shareText(tr("Mobile Illustrator çökme raporu"), report)
             },
             onDismiss = vm::dismissCrashReport,
         )
+    }
+    if (showCoffee) {
+        host.coffee?.let { CoffeeDialog(it, onDismiss = { showCoffee = false }) { showCoffee = false; host.buyCoffee() } } ?: run { showCoffee = false }
     }
 }
 
@@ -275,6 +261,8 @@ private fun TopBar(
     onRename: () -> Unit,
     onExport: (ExportFormat) -> Unit,
     onToggleLanguage: () -> Unit,
+    coffee: CoffeeState?,
+    onCoffee: () -> Unit,
 ) {
     val state = vm.state
     var menu by remember { mutableStateOf(false) }
@@ -308,6 +296,10 @@ private fun TopBar(
                 item(if (state.snapping) tr("Yakalama: açık") else tr("Yakalama: kapalı")) { vm.toggleSnapping() }
                 // Dil değiştirme: seçim kaydedilir ve ekran yeni dille yeniden kurulur.
                 item(tr("Dil: Türkçe")) { onToggleLanguage() }
+                if (coffee != null) {
+                    HorizontalDivider()
+                    item(if (coffee.purchased) tr("Kahve için teşekkürler ☕") else tr("Geliştiriciye kahve ısmarla ☕"), onCoffee)
+                }
             }
         }
         // Bağlı dosyaya yazılmamış değişiklik varsa adın başında nokta görünür.

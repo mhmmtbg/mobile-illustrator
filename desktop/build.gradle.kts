@@ -13,6 +13,14 @@ kotlin {
     jvmToolchain(17)
 }
 
+// Ekranlar ve düzenleyici mantığı Android sürümüyle ortaktır (shared-ui); örnek dosya da oradan alınır.
+sourceSets {
+    main {
+        kotlin.srcDir("../shared-ui/src/main/kotlin")
+        resources.srcDir("../app/src/main/assets")
+    }
+}
+
 dependencies {
     implementation(project(":core-model"))
     implementation(project(":io-svg"))
@@ -35,8 +43,12 @@ compose.desktop {
             description = "Katmanlı vektör çizim; .ai, PDF ve SVG dosyalarını açar ve kaydeder"
             vendor = "mhmmtbg"
             // Paketlenen Java çalışma ortamına alınacak modüller (dosya pencereleri, görsel okuma, XML).
-            modules("java.desktop", "java.xml", "java.logging")
+            modules("java.desktop", "java.xml", "java.logging", "jdk.unsupported")
+            linux {
+                iconFile.set(project.file("packaging/icon.png"))
+            }
             windows {
+                iconFile.set(project.file("packaging/icon.ico"))
                 menuGroup = "Mobile Illustrator"
                 shortcut = true
                 dirChooser = true

@@ -71,6 +71,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // Ekranlar ve düzenleyici mantığı Windows sürümüyle ortaktır; kaynakları shared-ui klasöründedir.
+    sourceSets["main"].kotlin.srcDir("../shared-ui/src/main/kotlin")
     buildFeatures {
         compose = true
         buildConfig = true

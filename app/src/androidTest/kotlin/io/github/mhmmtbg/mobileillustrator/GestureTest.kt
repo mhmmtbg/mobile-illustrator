@@ -24,7 +24,7 @@ class GestureTest {
 
     private fun vm(): EditorViewModel {
         var out: EditorViewModel? = null
-        rule.activityRule.scenario.onActivity { out = ViewModelProvider(it)[EditorViewModel::class.java] }
+        rule.activityRule.scenario.onActivity { out = ViewModelProvider(it)[EditorHolder::class.java].editor }
         return out!!
     }
 
