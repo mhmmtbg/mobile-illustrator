@@ -43,7 +43,7 @@ jobs:
       - name: Birim testleri
         run: |
           set -o pipefail
-          ./gradlew :core-model:test :io-svg:test :io-ai:test 2>&1 | tee -a build.log
+          ./gradlew :core-model:test :io-svg:test :io-ai:test --rerun-tasks 2>&1 | tee -a build.log
 
       - name: APK derle
         run: |
