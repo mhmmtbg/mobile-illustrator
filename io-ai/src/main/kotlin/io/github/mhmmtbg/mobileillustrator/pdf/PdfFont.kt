@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
+import io.github.mhmmtbg.mobileillustrator.model.SubPath
 import java.nio.charset.Charset
 
 /**
@@ -17,8 +18,40 @@ class PdfFont private constructor(
     val monospace: Boolean,
     val bold: Boolean,
     val italic: Boolean,
+    private val names: Array<String?>?,
+    private val source: GlyphSource?,
+    private val cidToGid: ByteArray?,
 ) {
-    class Glyph(val text: String?, /** 1000'lik em biriminde ilerleme. */ val width: Double, val isSpace: Boolean)
+    class Glyph(val code: Int, val text: String?, /** 1000'lik em biriminde ilerleme. */ val width: Double, val isSpace: Boolean)
+
+    private val outlines = HashMap<Int, List<SubPath>?>()
+
+    /** Dosyaya gömülü font okunabildiyse harflerin özgün biçimleri çizilebilir. */
+    val hasOutlines: Boolean get() = source != null
+
+    /**
+     * Karakter kodunun dış hattı (1 em = 1 birim, y yukarı). Boş glifler (boşluk) için boş liste,
+     * font okunamıyorsa `null`.
+     */
+    fun outline(code: Int): List<SubPath>? {
+        val src = source ?: return null
+        return outlines.getOrPut(code) {
+            try {
+                val gid = when {
+                    twoByte && src is CffFont -> src.gidForCid(code)
+                    twoByte -> cidToGid?.let { m ->
+                        if (code * 2 + 1 < m.size) ((m[code * 2].toInt() and 0xFF) shl 8) or (m[code * 2 + 1].toInt() and 0xFF) else 0
+                    } ?: code
+                    src is CffFont -> names?.getOrNull(code)?.let(src::gidForName) ?: src.gidForCode(code) ?: 0
+                    src is TrueTypeFont -> src.gidForCode(code, encoding?.getOrNull(code)?.firstOrNull()?.code)
+                    else -> 0
+                }
+                src.outline(gid) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+    }
 
     /** Bu fontla yazılmış metin güvenle Unicode'a çevrilebiliyor mu? */
     val decodable: Boolean get() = toUnicode != null || encoding != null
@@ -36,7 +69,7 @@ class PdfFont private constructor(
                 i++
             }
             val text = toUnicode?.get(code) ?: encoding?.getOrNull(code)
-            out += Glyph(text, widths[code] ?: defaultWidth, !twoByte && code == 32)
+            out += Glyph(code, text, widths[code] ?: defaultWidth, !twoByte && code == 32)
         }
         return out
     }
@@ -55,11 +88,14 @@ class PdfFont private constructor(
             var defaultWidth = 500.0
             var twoByte = false
             var encoding: Array<String?>? = null
+            var names: Array<String?>? = null
+            var cidToGid: ByteArray? = null
 
             if (subtype == "Type0") {
                 twoByte = true
                 val desc = file.dict(file.array(dict["DescendantFonts"])?.firstOrNull())
                 descriptor = file.dict(desc?.get("FontDescriptor")) ?: descriptor
+                cidToGid = file.stream(desc?.get("CIDToGIDMap"))?.let { try { file.decodedBytes(it) } catch (e: Exception) { null } }
                 defaultWidth = file.num(desc?.get("DW")) ?: 1000.0
                 val w = file.array(desc?.get("W"))
                 if (w != null) {
@@ -88,7 +124,23 @@ class PdfFont private constructor(
                     val k = (fm?.getOrNull(0) ?: 0.001) * 1000
                     for (key in widths.keys.toList()) widths[key] = widths[key]!! * k
                 }
-                encoding = buildEncoding(file, dict["Encoding"], baseName)
+                names = arrayOfNulls(256)
+                encoding = buildEncoding(file, dict["Encoding"], baseName, names)
+            }
+
+            // Gömülü font programı: TrueType (FontFile2) ya da CFF (FontFile3). Eski Type 1 (FontFile) okunmaz.
+            val source: GlyphSource? = try {
+                val ff2 = file.stream(descriptor?.get("FontFile2"))
+                val ff3 = file.stream(descriptor?.get("FontFile3"))
+                when {
+                    ff2 != null -> file.decodedBytes(ff2).let { TrueTypeFont.parse(it) ?: CffFont.parse(it) }
+                    ff3 != null -> file.decodedBytes(ff3).let { b ->
+                        if (TrueTypeFont.tablesOf(b)?.containsKey("glyf") == true) TrueTypeFont.parse(b) else CffFont.parse(b)
+                    }
+                    else -> null
+                }
+            } catch (e: Exception) {
+                null
             }
 
             val flags = file.int(descriptor?.get("Flags")) ?: 0
@@ -101,7 +153,7 @@ class PdfFont private constructor(
                 (file.num(descriptor?.get("FontWeight")) ?: 400.0) >= 600
             val italic = (flags and 64) != 0 || lower.contains("italic") || lower.contains("oblique") ||
                 (file.num(descriptor?.get("ItalicAngle")) ?: 0.0) != 0.0
-            return PdfFont(baseName, twoByte, toUnicode, encoding, widths, defaultWidth, serif, mono, bold, italic)
+            return PdfFont(baseName, twoByte, toUnicode, encoding, widths, defaultWidth, serif, mono, bold, italic, names, source, cidToGid)
         }
 
         private fun charsetOrNull(name: String): Charset? = try { Charset.forName(name) } catch (e: Exception) { null }
@@ -119,11 +171,27 @@ class PdfFont private constructor(
             return table
         }
 
-        private fun buildEncoding(file: PdfFile, enc: PdfObj?, baseName: String): Array<String?>? {
+        private fun buildEncoding(file: PdfFile, enc: PdfObj?, baseName: String, names: Array<String?>): Array<String?>? {
             val lower = baseName.lowercase()
+            val e = file.resolve(enc)
+            // Glif adları: fontun içinde harfi bulmak için (metne çevrilemese bile).
+            if (e is PdfName || e is PdfDict) {
+                val base = baseTable((e as? PdfName)?.name ?: file.name((e as PdfDict)["BaseEncoding"]))
+                for (i in 0 until 256) names[i] = base[i]?.let(GlyphNames::nameOf)
+            }
+            (e as? PdfDict)?.let { d ->
+                var code = 0
+                for (item in file.array(d["Differences"]) ?: emptyList()) {
+                    when (val r = file.resolve(item)) {
+                        is PdfNum -> code = r.value.toInt()
+                        is PdfName -> { if (code in 0..255) names[code] = r.name; code++ }
+                        else -> {}
+                    }
+                }
+            }
             // Simge fontlarında kodların harf karşılığı yoktur.
             if (lower.contains("symbol") || lower.contains("dingbat") || lower.contains("wingding")) return null
-            return when (val e = file.resolve(enc)) {
+            return when (e) {
                 is PdfName -> baseTable(e.name)
                 is PdfDict -> {
                     val table = baseTable(file.name(e["BaseEncoding"]))
@@ -248,6 +316,19 @@ internal object GlyphNames {
         for (c in 'a'..'z') m[c.toString()] = c.toString()
         m
     }
+
+    private val inverse: Map<String, String> by lazy {
+        val m = HashMap<String, String>()
+        // Aynı karakterin birden çok adı varsa standart olan (tabloda önce gelen) kazanır.
+        for ((n, u) in table) if (n != "nbspace" && n != "sfthyphen") m.putIfAbsent(u, n)
+        for (c in 'A'..'Z') m[c.toString()] = c.toString()
+        for (c in 'a'..'z') m[c.toString()] = c.toString()
+        m["\u00A0"] = "space"
+        m
+    }
+
+    /** Karakterin standart glif adı ("é" -> "eacute"). */
+    fun nameOf(text: String): String? = inverse[text]
 
     fun toUnicode(name: String): String? {
         table[name]?.let { return it }

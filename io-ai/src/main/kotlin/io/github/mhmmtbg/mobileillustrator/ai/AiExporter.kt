@@ -410,7 +410,9 @@ object AiExporter {
         // ---- Metin --------------------------------------------------------
 
         fun text(sb: StringBuilder, node: TextNode, ctm: Matrix) {
-            val encoded = if (opt.outlineAllText) null else encode(node.text)
+            // Özgün harf biçimleri varsa onlar yazılır: font gerekmez, görünüm her yerde aynıdır.
+            val shapes = node.outline
+            val encoded = if (opt.outlineAllText || shapes != null) null else encode(node.text)
             // Metnin özellikleri ayrıca saklanır: bu uygulama dosyayı geri açtığında metin düzenlenebilir kalır.
             sb.append("/MI << /N ").append(textString(node.name)).append(" /T /Text /S ").append(textString(node.text))
                 .append(" /F ").append(textString(node.fontFamily)).append(" /Z ").append(n6(node.fontSize))
@@ -433,7 +435,7 @@ object AiExporter {
                 sb.append("BT /").append(font(node)).append(' ').append(n(node.fontSize)).append(" Tf ").append(mode)
                     .append(" Tr 1 0 0 -1 0 0 Tm ").append(encoded).append(" Tj ET\n")
             } else {
-                val outline = opt.outlineText?.invoke(node)
+                val outline = shapes ?: opt.outlineText?.invoke(node)
                 if (outline != null) paintPath(sb, outline, node.fill, node.stroke, FillRule.NonZero, node.opacity, ctm, node.blendMode)
             }
             sb.append("Q\nEMC\n")

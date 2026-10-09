@@ -110,9 +110,15 @@ data class TextNode(
     val stroke: Stroke? = null,
     /** Biliniyorsa metnin gerçek genişliği (içe aktarmada fonttan hesaplanır); yoksa tahmin edilir. */
     val measuredWidth: Double? = null,
+    /**
+     * Dosyadaki özgün fontla çizilmiş harf biçimleri (yerel uzayda). Doluysa metin bununla gösterilir,
+     * böylece cihazda o font olmasa da görünüm aynı kalır. Metin düzenlenince düşer ve cihaz fontuna geçilir.
+     */
+    val outline: List<SubPath>? = null,
 ) : Node {
     /** Yerel uzaydaki yaklaşık kutu. */
     fun localBounds(): Rect {
+        outline?.mapNotNull { it.bounds() }?.reduceOrNull(Rect::union)?.let { return it }
         val w = measuredWidth ?: (text.length * fontSize * 0.55)
         return Rect(0.0, -fontSize * 0.8, w, fontSize * 0.25)
     }

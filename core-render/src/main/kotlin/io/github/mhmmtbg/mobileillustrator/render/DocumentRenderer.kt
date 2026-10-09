@@ -214,6 +214,19 @@ class DocumentRenderer {
     }
 
     private fun drawText(canvas: Canvas, node: TextNode) {
+        node.outline?.let { shapes ->
+            // Dosyadaki fontun harf biçimleri: yol olarak çizilir.
+            val cached = pathCache[node.id]
+            val path = if (cached != null && cached.source === shapes) cached.path else AndroidPath().also {
+                fillPath(it, shapes, FillRule.NonZero)
+                pathCache[node.id] = CachedPath(shapes, FillRule.NonZero, it)
+            }
+            node.fill?.let { applyPaint(fillPaint, it, node.opacity); setBlend(fillPaint, node.blendMode); canvas.drawPath(path, fillPaint) }
+            node.stroke?.takeIf { it.width > 0.0 }?.let {
+                applyStroke(strokePaint, it, node.opacity); setBlend(strokePaint, node.blendMode); canvas.drawPath(path, strokePaint)
+            }
+            return
+        }
         if (node.text.isEmpty()) return
         configureText(textPaint, node)
         setBlend(textPaint, node.blendMode)

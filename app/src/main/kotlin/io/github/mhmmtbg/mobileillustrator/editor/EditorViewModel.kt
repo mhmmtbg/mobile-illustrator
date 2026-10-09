@@ -808,7 +808,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 present.updateNode(prompt.nodeId) { n ->
                     (n as? TextNode)?.copy(
                         text = text, name = text.take(24), fontSize = size, fontFamily = prompt.fontFamily,
-                        bold = prompt.bold, italic = prompt.italic, measuredWidth = null,
+                        // Metin değişti: özgün fontun harf biçimleri artık geçerli değil, cihaz fontuna geçilir.
+                        bold = prompt.bold, italic = prompt.italic, measuredWidth = null, outline = null,
                     ) ?: n
                 },
             )

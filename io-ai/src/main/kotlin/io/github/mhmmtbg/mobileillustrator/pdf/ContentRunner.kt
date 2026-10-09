@@ -146,6 +146,8 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val opacity: Double,
         val clip: ClipLink?,
         val blend: BlendMode,
+        /** Harf biçimleri (yerel uzayda); font okunamadıysa `null`. */
+        var outline: ArrayList<SubPath>?,
     )
 
     fun start(base: Matrix) {
@@ -662,6 +664,8 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val startTm = tm
         var advance = 0.0 // metin uzayında, yatay ölçekten önce
         var undecodable = false
+        val flip = if (fs < 0) -1.0 else 1.0
+        var outline: ArrayList<SubPath>? = if (font != null && font.hasOutlines) ArrayList() else null
         for (p in parts) {
             when (val r = if (p is PdfRef) file.resolve(p) else p) {
                 is PdfNum -> {
@@ -675,6 +679,16 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
                         undecodable = true
                     } else {
                         for (g in font.decode(r.bytes)) {
+                            outline?.let { acc ->
+                                val shape = font.outline(g.code)
+                                if (shape == null) {
+                                    outline = null
+                                } else if (shape.isNotEmpty()) {
+                                    // Glif uzayı (1 em, y yukarı) -> metnin yerel uzayı (y aşağı)
+                                    val m = Matrix(abs(fs), 0.0, 0.0, -abs(fs), advance * flip, 0.0)
+                                    for (sp in shape) acc += sp.transformed(m)
+                                }
+                            }
                             if (g.text != null) sb.append(g.text) else undecodable = true
                             advance += g.width / 1000.0 * fs + gs.charSpace + if (g.isSpace) gs.wordSpace else 0.0
                         }
@@ -685,12 +699,16 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         }
         tm = tm * Matrix.translate(advance * gs.hScale, 0.0)
         if (font == null || gs.renderMode == 3 || gs.renderMode == 7 || fs == 0.0) return
-        if (undecodable && sb.isBlank()) {
+        // Harf biçimleri eldeyse metin Unicode'a çevrilemese de doğru görünür.
+        val drawn = outline?.takeIf { it.isNotEmpty() }
+        if (undecodable && sb.isBlank() && drawn == null) {
             sink.warn("Bazı metinler okunamadı (font Unicode bilgisi içermiyor)")
             return
         }
-        if (sb.isEmpty()) return
-        if (undecodable) sink.warn("Bazı karakterler okunamadı")
+        if (sb.isEmpty() && drawn == null) return
+        if (undecodable) {
+            if (drawn == null) sink.warn("Bazı karakterler okunamadı") else if (sb.isBlank()) sb.append("?")
+        }
 
         val mode = gs.renderMode
         val fill = if (mode == 0 || mode == 2 || mode == 4 || mode == 6) fillPaint() else null
@@ -712,11 +730,19 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
                 if (local.x - prev.width > size * 0.18 && !prev.text.endsWith(" ") && !sb.startsWith(" ")) prev.text.append(' ')
                 prev.text.append(sb)
                 prev.width = local.x + width
+                val mine = outline
+                val theirs = prev.outline
+                if (mine != null && theirs != null) {
+                    val shift = Matrix.translate(local.x, local.y)
+                    for (sp in mine) theirs += sp.transformed(shift)
+                } else {
+                    prev.outline = null
+                }
                 return
             }
         }
         flushText()
-        pendingText = TextRun(font, size, matrix, sb, width, fill, stroke, opacity, gs.clip, gs.blend)
+        pendingText = TextRun(font, size, matrix, sb, width, fill, stroke, opacity, gs.clip, gs.blend, outline)
     }
 
     private fun sameLinear(a: Matrix, b: Matrix): Boolean {
@@ -728,7 +754,8 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val t = pendingText ?: return
         pendingText = null
         val text = t.text.toString()
-        if (text.isBlank()) return
+        val shapes = t.outline?.takeIf { it.isNotEmpty() }
+        if (text.isBlank() && shapes == null) return
         // Illustrator metni çoğu zaman "1 punto font x 30 kat dönüşüm" olarak yazar. Ölçek font boyutuna
         // taşınır: boyut anlamlı bir sayı olur ve küçük boyutta harf aralıkları bozulmaz.
         val k = kotlin.math.hypot(t.matrix.c, t.matrix.d).takeIf { it > 1e-9 && it.isFinite() } ?: 1.0
@@ -745,6 +772,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             opacity = t.opacity,
             blendMode = t.blend,
             measuredWidth = t.width * k,
+            outline = shapes?.let { list -> Matrix.scale(k).let { m -> list.map { it.transformed(m) } } },
         )
         val leaf = Leaf(node, t.clip)
         if (containers.isNotEmpty()) containers.last().items += leaf else sink.emit(leaf)

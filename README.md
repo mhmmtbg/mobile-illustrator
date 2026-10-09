@@ -50,7 +50,7 @@ Release sayfasına eklenir.
 | Opaklık, karışım modları (Çoğalt, Ekran, ...) | Tam (Android 10+; 9 ve öncesinde 5 temel mod) |
 | CMYK, ICC, Lab ve spot (Pantone) renkler | sRGB'ye çevrilir; renk yönetimi yok |
 | Gömülü görseller | PNG/JPEG; CMYK JPEG'lerde renk kayabilir |
-| Metin | Düzenlenebilir metin olarak gelir ama cihazın fontuyla gösterilir; özgün font kullanılmaz |
+| Metin | Dosyaya gömülü fontun (TrueType, OpenType/CFF) harf biçimleriyle birebir gösterilir ve metin olarak kalır. Metni düzenlersen cihazın fontuna geçer. Eski Type 1 fontlar cihaz fontuyla gösterilir |
 | Ağ (mesh) gradyan, desen dolgusu, opaklık maskesi | Düz renk / yok sayılır (açılışta uyarı gösterilir) |
 | Canlı efektler, semboller, fırçalar | Illustrator'ın PDF'e yazdığı düzleştirilmiş haliyle gelir |
 

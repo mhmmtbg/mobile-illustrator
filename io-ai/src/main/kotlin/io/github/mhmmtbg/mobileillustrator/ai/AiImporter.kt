@@ -316,13 +316,15 @@ object AiImporter {
             var fill: io.github.mhmmtbg.mobileillustrator.model.Paint? = null
             var stroke: io.github.mhmmtbg.mobileillustrator.model.Stroke? = null
             var opacity = 1.0
+            var outline: List<io.github.mhmmtbg.mobileillustrator.model.SubPath>? = null
             val blend = sample?.blendMode ?: BlendMode.Normal
             val inv = t.matrix.inverse()
             when (sample) {
                 is TextNode -> { fill = sample.fill; stroke = sample.stroke; opacity = sample.opacity }
                 is PathNode -> {
-                    // Yola çevrilmiş metin: boyalar belge uzayındadır, metnin yerel uzayına geri taşınır.
+                    // Yola çevrilmiş metin: biçimler ve boyalar belge uzayındadır, metnin yerel uzayına geri taşınır.
                     opacity = sample.opacity
+                    if (inv != null) outline = sample.subpaths.map { it.transformed(inv) }
                     fill = if (inv != null) sample.fill?.transformedBy(inv) else sample.fill
                     stroke = sample.stroke?.let { st ->
                         val k = t.matrix.meanScale.takeIf { it > 0 } ?: 1.0
@@ -343,6 +345,7 @@ object AiImporter {
                 opacity = opacity,
                 blendMode = blend,
                 transform = t.matrix,
+                outline = outline,
             )
         }
     }

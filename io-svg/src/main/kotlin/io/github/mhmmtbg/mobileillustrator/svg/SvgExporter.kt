@@ -228,6 +228,14 @@ object SvgExporter {
         }
 
         private fun text(n: TextNode) {
+            n.outline?.let { shapes ->
+                // Özgün fontun harf biçimleri: metin yol olarak yazılır, içerik aria-label'da kalır.
+                TAG = "<path"
+                style(n.fill, n.stroke, null)
+                common(n)
+                sb.append(" aria-label=\"").append(esc(n.text)).append("\" d=\"").append(pathData(shapes)).append("\"/>\n")
+                return
+            }
             TAG = "<text"
             style(n.fill, n.stroke, null)
             common(n)
