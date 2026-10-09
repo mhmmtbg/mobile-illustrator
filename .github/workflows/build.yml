@@ -20,9 +20,9 @@ jobs:
     env:
       VERSION_CODE: ${{ github.run_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -30,10 +30,28 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Birim testleri
-        run: ./gradlew :core-model:test :io-svg:test :io-ai:test --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :core-model:test :io-svg:test :io-ai:test 2>&1 | tee -a build.log
 
       - name: APK derle
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug 2>&1 | tee -a build.log
+
+      # Hata satırlarını çalışmanın özetine not olarak düşer; log indirmeden okunabilir.
+      - name: Hata özeti
+        if: failure()
+        run: |
+          [ -f build.log ] || exit 0
+          grep -E '^e: |^w: .*error|FAILED$|^\* What went wrong|^> |^\s+(at|Caused by) .*mobileillustrator|AssertionError|Unresolved|error:' build.log \
+            | sed -e "s#file://${GITHUB_WORKSPACE}/##" | awk '!seen[$0]++' | head -n 60 > errors.txt || true
+          [ -s errors.txt ] || tail -n 40 build.log > errors.txt
+          split -l 12 errors.txt chunk_
+          for f in chunk_*; do
+            msg=$(sed -e 's/%/%25/g' "$f" | awk 'BEGIN{ORS="%0A"} {print}')
+            echo "::error title=Derleme hatası::${msg}"
+          done
 
       - name: APK'yı adlandır
         run: |
