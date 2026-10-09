@@ -48,7 +48,7 @@ Release sayfasına eklenir.
 | Kırpma maskeleri | Tam |
 | Doğrusal ve dairesel gradyanlar | Tam |
 | Opaklık, karışım modları (Çoğalt, Ekran, ...) | Tam (Android 10+; 9 ve öncesinde 5 temel mod) |
-| CMYK, ICC, Lab ve spot (Pantone) renkler | sRGB'ye çevrilir; renk yönetimi yok |
+| CMYK, gri ve spot (Pantone) renkler | Değerler ve spot adları korunur, kaydederken aynen geri yazılır. Ekranda yaklaşık sRGB önizleme gösterilir; ICC profilli renk yönetimi yok |
 | Gömülü görseller | PNG/JPEG; CMYK JPEG'lerde renk kayabilir |
 | Metin | Dosyaya gömülü fontun (TrueType, OpenType/CFF) harf biçimleriyle birebir gösterilir ve metin olarak kalır. Metni düzenlersen cihazın fontuna geçer. Eski Type 1 fontlar cihaz fontuyla gösterilir |
 | Ağ (mesh) gradyan, desen dolgusu, opaklık maskesi | Düz renk / yok sayılır (açılışta uyarı gösterilir) |
@@ -61,7 +61,7 @@ Gereksinimler ve sınırlar:
   (AIPrivateData) yazılmaz. Bu uygulama kendi yazdığı dosyayı kayıpsız geri okur (katmanlar, adlar,
   gizli/kilitli nesneler, düzenlenebilir metin). Illustrator'ın aynı dosyada katmanları katman olarak mı
   yoksa grup olarak mı göstereceği sürüme bağlıdır ve burada denenemedi.
-- Renkler RGB olarak yazılır.
+- Uygulamada seçilen yeni renkler RGB ya da (renk seçicide CMYK modu) CMYK olarak yazılır. Dosyadaki ICC profilleri geri yazılmaz.
 
 ## Modüller
 

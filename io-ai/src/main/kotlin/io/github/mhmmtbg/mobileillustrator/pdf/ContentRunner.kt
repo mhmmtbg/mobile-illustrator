@@ -465,9 +465,9 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
     private fun strokePaint(): Paint? = paintOf(gs.strokeCs, gs.strokeColor, gs.strokePattern)
 
     private fun paintOf(cs: ColorSpace, color: DoubleArray, pattern: Paint?): Paint? = when {
-        cs is ColorSpace.Pattern -> pattern ?: cs.under?.let { Paint.Solid(it.toRgb(color)) }
+        cs is ColorSpace.Pattern -> pattern ?: cs.under?.let { Paint.Solid(it.toColor(color)) }
         cs is ColorSpace.Tint && cs.isNone -> null
-        else -> Paint.Solid(cs.toRgb(color))
+        else -> Paint.Solid(cs.toColor(color))
     }
 
     private fun withAlpha(p: Paint?, alpha: Double): Paint? =
@@ -557,7 +557,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val span = if (t1 == t0) 1.0 else t1 - t0
         val out = ArrayList<GradientStop>()
         fun add(t: Double, at: Double = t) {
-            out += GradientStop(((t - t0) / span).coerceIn(0.0, 1.0), cs.toRgb(fn.eval(doubleArrayOf(at))))
+            out += GradientStop(((t - t0) / span).coerceIn(0.0, 1.0), cs.toColor(fn.eval(doubleArrayOf(at))))
         }
         fun samples(f: PdfFunction): Int = when (f) {
             is PdfFunction.Exponential -> if (f.n == 1.0) 1 else 8

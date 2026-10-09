@@ -6,6 +6,7 @@ import io.github.mhmmtbg.mobileillustrator.model.FillRule
 import io.github.mhmmtbg.mobileillustrator.model.GradientStop
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
 import io.github.mhmmtbg.mobileillustrator.model.ImageData
+import io.github.mhmmtbg.mobileillustrator.model.Ink
 import io.github.mhmmtbg.mobileillustrator.model.ImageNode
 import io.github.mhmmtbg.mobileillustrator.model.Layer
 import io.github.mhmmtbg.mobileillustrator.model.LineCap
@@ -64,6 +65,7 @@ object AiExporter {
         val fonts = LinkedHashMap<String, Int>()
         val imageCache = java.util.IdentityHashMap<Any, Int>()
         val nodeOcgs = ArrayList<Triple<Int, Boolean, Boolean>>() // nesne no, görünür, kilitli
+        val spotSpaces = LinkedHashMap<String, Pair<String, Int>>() // tanım -> (kaynak adı, nesne no)
         var resourcesId = 0
 
         fun reserve(): Int { objects += null; return objects.size }
@@ -138,6 +140,11 @@ object AiExporter {
             if (xobjects.isNotEmpty()) {
                 res.append(" /XObject <<")
                 for ((i, id) in xobjects.withIndex()) res.append(" /X").append(i).append(' ').append(id).append(" 0 R")
+                res.append(" >>")
+            }
+            if (spotSpaces.isNotEmpty()) {
+                res.append(" /ColorSpace <<")
+                for ((name, id) in spotSpaces.values) res.append(" /").append(name).append(' ').append(id).append(" 0 R")
                 res.append(" >>")
             }
             if (fonts.isNotEmpty()) {
@@ -328,8 +335,16 @@ object AiExporter {
 
         fun setPaint(sb: StringBuilder, p: Paint, stroke: Boolean, ctm: Matrix) {
             when (p) {
-                is Paint.Solid -> sb.append(n(p.color.r)).append(' ').append(n(p.color.g)).append(' ').append(n(p.color.b))
-                    .append(if (stroke) " RG\n" else " rg\n")
+                is Paint.Solid -> when (val ink = p.color.ink) {
+                    // Özgün baskı renkleri RGB'ye çevrilmeden, olduğu gibi yazılır.
+                    is Ink.Cmyk -> sb.append(n(ink.c)).append(' ').append(n(ink.m)).append(' ').append(n(ink.y)).append(' ').append(n(ink.k))
+                        .append(if (stroke) " K\n" else " k\n")
+                    is Ink.Gray -> sb.append(n(ink.level)).append(if (stroke) " G\n" else " g\n")
+                    is Ink.Spot -> sb.append('/').append(spotSpace(ink)).append(if (stroke) " CS " else " cs ").append(n(ink.tint))
+                        .append(if (stroke) " SCN\n" else " scn\n")
+                    null -> sb.append(n(p.color.r)).append(' ').append(n(p.color.g)).append(' ').append(n(p.color.b))
+                        .append(if (stroke) " RG\n" else " rg\n")
+                }
                 is Paint.LinearGradient -> pattern(sb, stroke, ctm * p.transform, p.stops) {
                     "/ShadingType 2 /Coords [${n(p.start.x)} ${n(p.start.y)} ${n(p.end.x)} ${n(p.end.y)}]"
                 }
@@ -339,23 +354,60 @@ object AiExporter {
             }
         }
 
+        /** Spot renk için Separation renk uzayı kaynağı; aynı mürekkep bir kez tanımlanır. */
+        fun spotSpace(ink: Ink.Spot): String {
+            val key = ink.name + "|" + ink.space + "|" + ink.zero + "|" + ink.full
+            return spotSpaces.getOrPut(key) {
+                val alt = when (ink.space) {
+                    "CMYK" -> "/DeviceCMYK"
+                    "Lab" -> "[/Lab << /WhitePoint [0.9642 1 0.8249] /Range [-128 127 -128 127] >>]"
+                    else -> "/DeviceRGB"
+                }
+                val range = when (ink.space) {
+                    "CMYK" -> "[0 1 0 1 0 1 0 1]"
+                    "Lab" -> "[0 100 -128 127 -128 127]"
+                    else -> "[0 1 0 1 0 1]"
+                }
+                val id = add(
+                    "[/Separation ${pdfName(ink.name)} $alt << /FunctionType 2 /Domain [0 1] /Range $range " +
+                        "/C0 [${ink.zero.joinToString(" ") { n6(it) }}] /C1 [${ink.full.joinToString(" ") { n6(it) }}] /N 1 >>]",
+                )
+                "CS${spotSpaces.size}" to id
+            }.first
+        }
+
+        /** PDF adı: boşluk ve özel karakterler #xx olarak kaçırılır. */
+        fun pdfName(s: String): String {
+            val sb = StringBuilder("/")
+            for (b in s.toByteArray(Charsets.UTF_8)) {
+                val c = b.toInt() and 0xFF
+                if (c in 33..126 && c.toChar() !in "#/()<>[]{}%") sb.append(c.toChar()) else sb.append('#').append("%02X".format(c))
+            }
+            return sb.toString()
+        }
+
         fun pattern(sb: StringBuilder, stroke: Boolean, matrix: Matrix, stops: List<GradientStop>, geometry: () -> String) {
-            val fn = gradientFunction(stops)
+            // Tüm duraklar CMYK ise gradyan da CMYK yazılır; karışıksa RGB.
+            val cmyk = stops.isNotEmpty() && stops.all { it.color.ink is Ink.Cmyk }
+            val fn = gradientFunction(stops, cmyk)
             val id = add(
                 "<< /Type /Pattern /PatternType 2 /Matrix [${mat(matrix)}] /Shading << ${geometry()} " +
-                    "/ColorSpace /DeviceRGB /Function $fn /Extend [true true] >> >>",
+                    "/ColorSpace ${if (cmyk) "/DeviceCMYK" else "/DeviceRGB"} /Function $fn /Extend [true true] >> >>",
             )
             patterns += id
             val name = "/P${patterns.size - 1}"
             sb.append(if (stroke) "/Pattern CS $name SCN\n" else "/Pattern cs $name scn\n")
         }
 
-        fun gradientFunction(raw: List<GradientStop>): String {
+        fun gradientFunction(raw: List<GradientStop>, cmyk: Boolean = false): String {
             var stops = raw.sortedBy { it.offset }.map { it.copy(offset = it.offset.coerceIn(0.0, 1.0)) }
             if (stops.isEmpty()) stops = listOf(GradientStop(0.0, io.github.mhmmtbg.mobileillustrator.model.Rgba.Black))
             if (stops.first().offset > 0.0) stops = listOf(stops.first().copy(offset = 0.0)) + stops
             if (stops.last().offset < 1.0) stops = stops + stops.last().copy(offset = 1.0)
-            fun c(s: GradientStop) = "[${n(s.color.r)} ${n(s.color.g)} ${n(s.color.b)}]"
+            fun c(s: GradientStop): String {
+                val ink = s.color.ink
+                return if (cmyk && ink is Ink.Cmyk) "[${n(ink.c)} ${n(ink.m)} ${n(ink.y)} ${n(ink.k)}]" else "[${n(s.color.r)} ${n(s.color.g)} ${n(s.color.b)}]"
+            }
             fun seg(a: GradientStop, b: GradientStop) = "<< /FunctionType 2 /Domain [0 1] /C0 ${c(a)} /C1 ${c(b)} /N 1 >>"
             if (stops.size == 2) return seg(stops[0], stops[1])
             val fns = StringBuilder()

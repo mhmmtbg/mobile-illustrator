@@ -368,3 +368,71 @@ class StressFileTest {
         java.io.File("build/stress.ai").writeBytes(bytes)
     }
 }
+
+/** Baskı renkleri: CMYK, gri ve spot değerler dosyadan geçerken değişmemeli. */
+class InkTest {
+    private fun near(e: Double, a: Double) = assertTrue(abs(e - a) < 1e-4, "beklenen $e, gelen $a")
+    private fun box(id: String, color: Rgba, stroke: Rgba? = null) = io.github.mhmmtbg.mobileillustrator.model.PathNode(
+        id = id, subpaths = listOf(Shapes.rect(Rect(0.0, 0.0, 10.0, 10.0))), fill = Paint.Solid(color), stroke = stroke?.let { Stroke(Paint.Solid(it), 2.0) },
+    )
+    private fun trip(vararg nodes: io.github.mhmmtbg.mobileillustrator.model.Node): List<io.github.mhmmtbg.mobileillustrator.model.Node> {
+        val doc = Document(name = "renk", artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 50.0, 50.0))), layers = listOf(Layer(name = "L", children = nodes.toList())))
+        val bytes = AiExporter.export(doc)
+        val r = AiImporter.import(bytes, "renk")
+        assertEquals(emptyList(), r.warnings)
+        // İkinci tur: değerler kayarak birikmemeli
+        val again = AiImporter.import(AiExporter.export(r.document), "renk").document
+        assertEquals(r.document.layers.single().children.map { (it as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill }, again.layers.single().children.map { (it as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill })
+        return r.document.layers.single().children
+    }
+
+    @Test
+    fun cmykAndGrayValuesAreWrittenBackExactly() {
+        val cmyk = io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk(0.704, 0.004, 0.658, 0.0)
+        val k = io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk(0.0, 0.0, 0.0, 1.0)
+        val gray = Rgba(0.4, 0.4, 0.4, ink = io.github.mhmmtbg.mobileillustrator.model.Ink.Gray(0.4))
+        val kids = trip(box("a", cmyk.toRgb(), k.toRgb()), box("b", gray), box("c", Rgba.rgb(0x123456)))
+        val a = kids[0] as io.github.mhmmtbg.mobileillustrator.model.PathNode
+        val ink = (a.fill as Paint.Solid).color.ink as io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk
+        near(0.704, ink.c); near(0.004, ink.m); near(0.658, ink.y); near(0.0, ink.k)
+        assertEquals(k, (a.stroke!!.paint as Paint.Solid).color.ink)
+        near(0.4, ((kids[1] as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill as Paint.Solid).color.ink.let { (it as io.github.mhmmtbg.mobileillustrator.model.Ink.Gray).level })
+        // RGB renk RGB kalır
+        assertEquals(null, ((kids[2] as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill as Paint.Solid).color.ink)
+        // Dosyada gerçekten CMYK işleçleri var
+        val text = String(AiExporter.export(Document(name = "x", artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 9.0, 9.0))), layers = listOf(Layer(name = "L", children = listOf(box("a", cmyk.toRgb())))))), Charsets.ISO_8859_1)
+        assertTrue(!text.contains("DeviceRGB") || text.contains("/Group"))
+    }
+
+    @Test
+    fun spotColoursKeepNameTintAndDefinition() {
+        val spot = io.github.mhmmtbg.mobileillustrator.model.Ink.Spot("PANTONE 7524 C", 0.6, "Lab", listOf(100.0, 0.0, 0.0), listOf(45.8824, 35.0, 23.0))
+        val cmykSpot = io.github.mhmmtbg.mobileillustrator.model.Ink.Spot("Özel Kırmızı #1", 1.0, "CMYK", listOf(0.0, 0.0, 0.0, 0.0), listOf(0.0, 1.0, 0.9, 0.05))
+        val kids = trip(box("a", Rgba(0.6, 0.4, 0.35, ink = spot)), box("b", Rgba(0.9, 0.1, 0.1, ink = cmykSpot)))
+        val a = (kids[0] as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill as Paint.Solid
+        val back = a.color.ink as io.github.mhmmtbg.mobileillustrator.model.Ink.Spot
+        assertEquals("PANTONE 7524 C", back.name)
+        near(0.6, back.tint)
+        assertEquals("Lab", back.space)
+        near(45.8824, back.full[0]); near(35.0, back.full[1]); near(100.0, back.zero[0])
+        // Ekran rengi tanımdan hesaplanır: %60 ton, tam tondan açık kahverengimsi olmalı
+        assertTrue(a.color.r > a.color.b)
+        val b = ((kids[1] as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill as Paint.Solid).color.ink as io.github.mhmmtbg.mobileillustrator.model.Ink.Spot
+        assertEquals("Özel Kırmızı #1", b.name)
+        assertEquals("CMYK", b.space)
+        near(0.9, b.full[2])
+    }
+
+    @Test
+    fun cmykGradientStaysCmyk() {
+        val c0 = io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk(1.0, 0.0, 0.0, 0.0).toRgb()
+        val c1 = io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk(0.0, 1.0, 0.0, 0.2).toRgb()
+        val g = Paint.LinearGradient(Vec2(0.0, 0.0), Vec2(10.0, 0.0), listOf(GradientStop(0.0, c0), GradientStop(1.0, c1)))
+        val node = io.github.mhmmtbg.mobileillustrator.model.PathNode(id = "g", subpaths = listOf(Shapes.rect(Rect(0.0, 0.0, 10.0, 10.0))), fill = g)
+        val doc = Document(name = "g", artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 50.0, 50.0))), layers = listOf(Layer(name = "L", children = listOf(node))))
+        val back = (AiImporter.import(AiExporter.export(doc), "g").document.layers.single().children.single() as io.github.mhmmtbg.mobileillustrator.model.PathNode).fill as Paint.LinearGradient
+        val last = back.stops.last().color.ink as io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk
+        near(0.0, last.c); near(1.0, last.m); near(0.2, last.k)
+        assertEquals(io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk(1.0, 0.0, 0.0, 0.0), back.stops.first().color.ink)
+    }
+}

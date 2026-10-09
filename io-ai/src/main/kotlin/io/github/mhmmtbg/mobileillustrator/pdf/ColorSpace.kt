@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
+import io.github.mhmmtbg.mobileillustrator.model.Ink
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import kotlin.math.pow
 
@@ -7,6 +8,12 @@ import kotlin.math.pow
 sealed class ColorSpace {
     abstract val components: Int
     abstract fun toRgb(c: DoubleArray): Rgba
+
+    /**
+     * Vektör nesnelerin rengi için: sRGB karşılığına ek olarak özgün CMYK/gri/spot tanımını da taşır.
+     * Görsellerde piksel başına gereksiz nesne üretmemek için [toRgb] kullanılır.
+     */
+    open fun toColor(c: DoubleArray): Rgba = toRgb(c)
     open fun initial(): DoubleArray = DoubleArray(components)
 
     object Gray : ColorSpace() {
@@ -15,6 +22,8 @@ sealed class ColorSpace {
             val g = c.getOrElse(0) { 0.0 }.coerceIn(0.0, 1.0)
             return Rgba(g, g, g)
         }
+
+        override fun toColor(c: DoubleArray): Rgba = toRgb(c).let { it.copy(ink = Ink.Gray(it.r)) }
     }
 
     object Rgb : ColorSpace() {
@@ -30,37 +39,14 @@ sealed class ColorSpace {
         override val components = 4
         override fun initial() = doubleArrayOf(0.0, 0.0, 0.0, 1.0)
 
-        /**
-         * Baskı mürekkeplerinin 16 köşe rengi arasında doğrusal karışım (xpdf/poppler ile aynı tablo).
-         * `1-c` türü saf dönüşümden çok daha az cırtlak, Illustrator'ın gösterdiğine yakın sonuç verir.
-         */
-        override fun toRgb(c: DoubleArray): Rgba {
-            val cy = c.getOrElse(0) { 0.0 }.coerceIn(0.0, 1.0)
-            val m = c.getOrElse(1) { 0.0 }.coerceIn(0.0, 1.0)
-            val y = c.getOrElse(2) { 0.0 }.coerceIn(0.0, 1.0)
-            val k = c.getOrElse(3) { 0.0 }.coerceIn(0.0, 1.0)
-            val c1 = 1 - cy
-            val m1 = 1 - m
-            val y1 = 1 - y
-            val k1 = 1 - k
-            var x = c1 * m1 * y1 * k1
-            var r = x; var g = x; var b = x
-            x = c1 * m1 * y1 * k; r += 0.1373 * x; g += 0.1216 * x; b += 0.1255 * x
-            x = c1 * m1 * y * k1; r += x; g += 0.9490 * x
-            x = c1 * m1 * y * k; r += 0.1098 * x; g += 0.1020 * x
-            x = c1 * m * y1 * k1; r += 0.9255 * x; b += 0.5490 * x
-            x = c1 * m * y1 * k; r += 0.1412 * x
-            x = c1 * m * y * k1; r += 0.9294 * x; g += 0.1098 * x; b += 0.1412 * x
-            x = c1 * m * y * k; r += 0.1333 * x
-            x = cy * m1 * y1 * k1; g += 0.6784 * x; b += 0.9373 * x
-            x = cy * m1 * y1 * k; g += 0.0588 * x; b += 0.1412 * x
-            x = cy * m1 * y * k1; g += 0.6510 * x; b += 0.3137 * x
-            x = cy * m1 * y * k; g += 0.0745 * x
-            x = cy * m * y1 * k1; r += 0.1804 * x; g += 0.1922 * x; b += 0.5725 * x
-            x = cy * m * y1 * k; b += 0.0078 * x
-            x = cy * m * y * k1; r += 0.2118 * x; g += 0.2119 * x; b += 0.2235 * x
-            return Rgba(r.coerceIn(0.0, 1.0), g.coerceIn(0.0, 1.0), b.coerceIn(0.0, 1.0))
-        }
+        override fun toRgb(c: DoubleArray): Rgba = toColor(c).copy(ink = null)
+
+        override fun toColor(c: DoubleArray): Rgba = Ink.Cmyk(
+            c.getOrElse(0) { 0.0 }.coerceIn(0.0, 1.0),
+            c.getOrElse(1) { 0.0 }.coerceIn(0.0, 1.0),
+            c.getOrElse(2) { 0.0 }.coerceIn(0.0, 1.0),
+            c.getOrElse(3) { 0.0 }.coerceIn(0.0, 1.0),
+        ).toRgb()
     }
 
     class Lab(private val white: DoubleArray, private val range: DoubleArray) : ColorSpace() {
@@ -104,8 +90,31 @@ sealed class ColorSpace {
     }
 
     /** Separation / DeviceN: ton değerleri bir işlevle alternatif uzaya çevrilir. */
-    class Tint(override val components: Int, private val alt: ColorSpace, private val fn: PdfFunction?, private val none: Boolean) :
-        ColorSpace() {
+    class Tint(
+        override val components: Int,
+        private val alt: ColorSpace,
+        private val fn: PdfFunction?,
+        private val none: Boolean,
+        /** Tek mürekkepli (Separation) uzayda mürekkebin adı. */
+        private val name: String? = null,
+    ) : ColorSpace() {
+        override fun toColor(c: DoubleArray): Rgba {
+            val rgb = toRgb(c)
+            val f = fn
+            if (name == null || components != 1 || f == null || name == "All") return rgb
+            val space = when (alt) {
+                is Cmyk -> "CMYK"
+                is Lab -> "Lab"
+                is Rgb -> "RGB"
+                else -> return rgb
+            }
+            return try {
+                rgb.copy(ink = Ink.Spot(name, c.getOrElse(0) { 1.0 }.coerceIn(0.0, 1.0), space, f.eval(doubleArrayOf(0.0)).toList(), f.eval(doubleArrayOf(1.0)).toList()))
+            } catch (e: Exception) {
+                rgb
+            }
+        }
+
         override fun initial() = DoubleArray(components) { 1.0 }
         val isNone: Boolean get() = none
         override fun toRgb(c: DoubleArray): Rgba {
@@ -189,7 +198,8 @@ sealed class ColorSpace {
                 }
                 "Separation" -> {
                     val alt = parse(file, arr.getOrNull(2), resources, depth + 1) ?: Gray
-                    Tint(1, alt, PdfFunction.parse(file, arr.getOrNull(3)), file.name(arr.getOrNull(1)) == "None")
+                    val ink = file.name(arr.getOrNull(1))
+                    Tint(1, alt, PdfFunction.parse(file, arr.getOrNull(3)), ink == "None", ink)
                 }
                 "DeviceN" -> {
                     val names = file.array(arr.getOrNull(1)) ?: return null

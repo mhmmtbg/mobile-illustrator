@@ -19,7 +19,14 @@ fail() {
 
 alive() { adb shell pidof "$PKG" > /dev/null || fail "Uygulama çöktü: $1"; }
 shot() { sleep 1; adb exec-out screencap -p > "$OUT/$1.png"; }
-dump() { adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb exec-out cat /sdcard/ui.xml > "$OUT/ui.xml"; }
+# Arayüz meşgulken (ör. büyük dosya çizilirken) döküm alınamayabilir; birkaç kez denenir.
+dump() {
+  for _ in 1 2 3 4 5; do
+    if adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1; then adb exec-out cat /sdcard/ui.xml > "$OUT/ui.xml"; return 0; fi
+    sleep 2
+  done
+  fail "Arayüz dökümü alınamadı (uygulama yanıt vermiyor olabilir)"
+}
 
 # Etiketi (content-desc ya da text) verilen öğenin bir özniteliğini yazar; "center" merkezini verir.
 node() {
@@ -274,14 +281,14 @@ if [ -f "$STRESS" ]; then
   alive "büyük dosya açma"
   shot 14-stres
   tap "Seçim"
-  adb shell dumpsys gfxinfo "$PKG" reset > /dev/null
+  adb shell dumpsys gfxinfo "$PKG" reset > /dev/null 2>&1 || true
   # Nesne seç ve sürükle, sonra çerçeveyle çoklu seçip taşı
   for i in 1 2 3; do
     adb shell input swipe $((W * 50 / 100)) $((H * 45 / 100)) $((W * (30 + i * 10) / 100)) $((H * (35 + i * 5) / 100)) 900
   done
   adb shell input swipe $((W * 5 / 100)) $((H * 13 / 100)) $((W * 95 / 100)) $((H * 20 / 100)) 600
   sleep 1
-  stats=$(adb shell dumpsys gfxinfo "$PKG" | grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|95th percentile|99th percentile" | tr -d '\r' | sed 's/^ *//' | paste -sd ';' -)
+  stats=$(adb shell dumpsys gfxinfo "$PKG" 2> /dev/null | grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|95th percentile|99th percentile" | tr -d '\r' | sed 's/^ *//' | paste -sd ';' - || true)
   echo "::notice title=Performans (10.000 nesne)::açılış $((t1 - t0)) sn; $stats"
   alive "büyük dosyada düzenleme"
   shot 15-stres-surukleme

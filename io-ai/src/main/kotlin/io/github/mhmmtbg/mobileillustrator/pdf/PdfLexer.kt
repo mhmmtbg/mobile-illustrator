@@ -104,22 +104,35 @@ class PdfLexer(val data: ByteArray, var pos: Int = 0, private val end: Int = dat
 
     private fun readName(): PdfName {
         pos++
-        val sb = StringBuilder()
+        val out = java.io.ByteArrayOutputStream(24)
+        var ascii = true
         while (pos < end) {
             val b = data[pos].toInt() and 0xFF
             if (isSpace(b) || isDelim(b)) break
             if (b == '#'.code && pos + 2 < end) {
                 val h = hexVal(data[pos + 1].toInt()) * 16 + hexVal(data[pos + 2].toInt())
                 if (h >= 0) {
-                    sb.append(h.toChar())
+                    out.write(h)
+                    if (h >= 128) ascii = false
                     pos += 3
                     continue
                 }
             }
-            sb.append(b.toChar())
+            out.write(b)
+            if (b >= 128) ascii = false
             pos++
         }
-        return PdfName(sb.toString())
+        val bytes = out.toByteArray()
+        if (ascii) return PdfName(String(bytes, Charsets.ISO_8859_1))
+        // Adlar kural olarak UTF-8'dir (ör. Türkçe karakterli spot renk adları); geçersizse Latin-1 sayılır.
+        return PdfName(
+            try {
+                Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+            } catch (e: java.nio.charset.CharacterCodingException) {
+                String(bytes, Charsets.ISO_8859_1)
+            },
+        )
     }
 
     private fun hexVal(c: Int): Int = when (c) {

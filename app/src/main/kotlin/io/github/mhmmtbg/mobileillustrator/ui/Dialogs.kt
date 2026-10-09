@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.mhmmtbg.mobileillustrator.editor.TextPrompt
+import io.github.mhmmtbg.mobileillustrator.model.Ink
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 
 @Composable
@@ -167,38 +168,69 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
     var sat by remember { mutableStateOf(hsv0[1]) }
     var value by remember { mutableStateOf(hsv0[2]) }
     var hex by remember { mutableStateOf("%06X".format(initial.toArgb() and 0xFFFFFF)) }
+    // Baskı işi için CMYK: değerler dosyaya RGB'ye çevrilmeden yazılır.
+    val ink0 = initial.ink
+    var cmykMode by remember { mutableStateOf(ink0 is Ink.Cmyk) }
+    val start = ink0 as? Ink.Cmyk
+    var c by remember { mutableStateOf((start?.c ?: 0.0).toFloat()) }
+    var m by remember { mutableStateOf((start?.m ?: 0.0).toFloat()) }
+    var y by remember { mutableStateOf((start?.y ?: 0.0).toFloat()) }
+    var k by remember { mutableStateOf((start?.k ?: 0.0).toFloat()) }
     fun argb() = android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value))
     fun syncHex() { hex = "%06X".format(argb() and 0xFFFFFF) }
+    fun cmyk() = Ink.Cmyk(c.toDouble(), m.toDouble(), y.toDouble(), k.toDouble())
+    fun step(v: Float) = (v * 100).toInt() / 100f
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Renk seç") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(Color(argb())))
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val preview = if (cmykMode) Color(cmyk().toRgb().toArgb()) else Color(argb())
+                Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(preview))
+                (ink0 as? Ink.Spot)?.let { spot ->
+                    Text(
+                        "Şu anki renk bir spot renk: ${spot.name} (%${(spot.tint * 100).toInt()}). Buradan renk seçersen spot tanımı kalkar.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
-                Text("Ton", style = MaterialTheme.typography.labelMedium)
-                Slider(hue, { hue = it; syncHex() }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = "Ton" })
-                Text("Doygunluk", style = MaterialTheme.typography.labelMedium)
-                Slider(sat, { sat = it; syncHex() }, modifier = Modifier.semantics { contentDescription = "Doygunluk" })
-                Text("Parlaklık", style = MaterialTheme.typography.labelMedium)
-                Slider(value, { value = it; syncHex() }, modifier = Modifier.semantics { contentDescription = "Parlaklık" })
-                OutlinedTextField(
-                    hex,
-                    { raw ->
-                        val clean = raw.removePrefix("#").filter { it.isLetterOrDigit() }.take(6).uppercase()
-                        hex = clean
-                        if (clean.length == 6) clean.toIntOrNull(16)?.let { rgb ->
-                            val hsv = FloatArray(3)
-                            android.graphics.Color.colorToHSV(rgb or (0xFF shl 24), hsv)
-                            hue = hsv[0]; sat = hsv[1]; value = hsv[2]
-                        }
-                    },
-                    singleLine = true,
-                    label = { Text("Onaltılık (RRGGBB)") },
-                )
+                ChoiceRow("Renk modeli", listOf("RGB" to !cmykMode, "CMYK" to cmykMode)) { cmykMode = it == 1 }
+                if (cmykMode) {
+                    @Composable
+                    fun ink(label: String, v: Float, set: (Float) -> Unit) {
+                        Text("$label %${(v * 100).toInt()}", style = MaterialTheme.typography.labelMedium)
+                        Slider(v, { set(step(it)) }, modifier = Modifier.semantics { contentDescription = label })
+                    }
+                    ink("Camgöbeği (C)", c) { c = it }
+                    ink("Macenta (M)", m) { m = it }
+                    ink("Sarı (Y)", y) { y = it }
+                    ink("Siyah (K)", k) { k = it }
+                    Text("Ekrandaki renk yaklaşık bir önizlemedir; dosyaya bu CMYK değerleri yazılır.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text("Ton", style = MaterialTheme.typography.labelMedium)
+                    Slider(hue, { hue = it; syncHex() }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = "Ton" })
+                    Text("Doygunluk", style = MaterialTheme.typography.labelMedium)
+                    Slider(sat, { sat = it; syncHex() }, modifier = Modifier.semantics { contentDescription = "Doygunluk" })
+                    Text("Parlaklık", style = MaterialTheme.typography.labelMedium)
+                    Slider(value, { value = it; syncHex() }, modifier = Modifier.semantics { contentDescription = "Parlaklık" })
+                    OutlinedTextField(
+                        hex,
+                        { raw ->
+                            val clean = raw.removePrefix("#").filter { it.isLetterOrDigit() }.take(6).uppercase()
+                            hex = clean
+                            if (clean.length == 6) clean.toIntOrNull(16)?.let { rgb ->
+                                val hsv = FloatArray(3)
+                                android.graphics.Color.colorToHSV(rgb or (0xFF shl 24), hsv)
+                                hue = hsv[0]; sat = hsv[1]; value = hsv[2]
+                            }
+                        },
+                        singleLine = true,
+                        label = { Text("Onaltılık (RRGGBB)") },
+                    )
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onPick(Rgba.fromArgb(argb())) }) { Text("Uygula") } },
+        confirmButton = { TextButton(onClick = { onPick(if (cmykMode) cmyk().toRgb() else Rgba.fromArgb(argb())) }) { Text("Uygula") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
     )
 }
