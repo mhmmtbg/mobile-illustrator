@@ -18,7 +18,7 @@ Android 8.0 (API 26) ve üzeri gerekir.
 | Aşama | İçerik | Durum |
 | --- | --- | --- |
 | 1 | Repo, CI, proje iskeleti | Tamam |
-| 2 | Belge modeli, tuval, kaydırma/yakınlaştırma, geri al/yinele | Sürüyor |
+| 2 | Belge modeli, tuval, kaydırma/yakınlaştırma, geri al/yinele | Tamam |
 | 3 | Katman paneli | Bekliyor |
 | 4 | Araçlar: düğüm düzenleme, kalem, metin, gradyan, Pathfinder | Bekliyor |
 | 5 | SVG ve .ai içe aktarma; SVG, PDF, PNG dışa aktarma | Bekliyor |

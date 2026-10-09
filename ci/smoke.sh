@@ -62,7 +62,7 @@ expect "Sil" enabled true "yeni şekil seçili olmalı"
 # Elips çiz, rengini değiştir
 tap "Elips"
 adb shell input swipe $((W * 40 / 100)) $((H * 50 / 100)) $((W * 80 / 100)) $((H * 62 / 100)) 500
-tap "#3B9BFF"
+tap "#E5484D"
 tap "Kontur"
 shot 03-elips-kontur
 expect "Kontur kalınlığı" enabled true "kontur seçiliyken kalınlık kaydırıcısı görünmeli"
