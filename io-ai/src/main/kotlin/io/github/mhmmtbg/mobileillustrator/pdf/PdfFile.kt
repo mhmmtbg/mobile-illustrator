@@ -1,5 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
+
 /**
  * Bir PDF dosyasının nesne deposu: çapraz başvuru tablosunu okur, nesneleri istendikçe çözer.
  * Illustrator dosyalarındaki dev özel veri akışlarına hiç dokunulmaz.
@@ -22,7 +24,7 @@ class PdfFile(private val data: ByteArray) {
 
     init {
         if (LexerUtil.find(data, "%PDF-", 0, minOf(data.size, 1024)) < 0) {
-            throw PdfException("PDF başlığı bulunamadı")
+            throw PdfException(tr("PDF başlığı bulunamadı"))
         }
         val ok = try {
             readXrefChain()
@@ -30,11 +32,11 @@ class PdfFile(private val data: ByteArray) {
             false
         }
         if (!ok || trailer["Root"] == null) rebuild()
-        if (trailer["Root"] == null) throw PdfException("Belge kökü bulunamadı")
-        if (trailer["Encrypt"] != null) throw PdfException("Şifreli dosyalar desteklenmiyor")
+        if (trailer["Root"] == null) throw PdfException(tr("Belge kökü bulunamadı"))
+        if (trailer["Encrypt"] != null) throw PdfException(tr("Şifreli dosyalar desteklenmiyor"))
     }
 
-    val root: PdfDict get() = dict(trailer["Root"]) ?: throw PdfException("Belge kökü okunamadı")
+    val root: PdfDict get() = dict(trailer["Root"]) ?: throw PdfException(tr("Belge kökü okunamadı"))
 
     // ---- Çözümleme yardımcıları -------------------------------------------
 

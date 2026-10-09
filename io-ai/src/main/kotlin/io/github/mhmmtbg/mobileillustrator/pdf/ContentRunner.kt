@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.ClipPath
@@ -179,7 +180,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
     private fun emit(item: Item) {
         if (stopped) return
         if (++emitted > MAX_NODES) {
-            stop("Dosya çok fazla nesne içeriyor; ilk $MAX_NODES nesne açıldı")
+            stop(tr("Dosya çok fazla nesne içeriyor; ilk %s nesne açıldı", MAX_NODES))
             return
         }
         flushText()
@@ -197,7 +198,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         var ticks = 0
         while (!stopped) {
             if (++ticks and 0x3FF == 0 && System.nanoTime() > deadline) {
-                stop("Dosya çok uzun sürdüğü için yarıda kesildi; bir kısmı açıldı")
+                stop(tr("Dosya çok uzun sürdüğü için yarıda kesildi; bir kısmı açıldı"))
                 break
             }
             val o = lx.next() ?: break
@@ -209,7 +210,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             try {
                 op(o.name, args, resources, patternBase, depth, lx, marks)
             } catch (e: PdfException) {
-                sink.warn(e.message ?: "İçerik hatası")
+                sink.warn(e.message ?: tr("İçerik hatası"))
             } catch (e: IndexOutOfBoundsException) {
                 // Eksik işlenen: işleci atla
             }
@@ -276,11 +277,11 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             "k" -> { gs.fillCs = ColorSpace.Cmyk; gs.fillColor = doubleArrayOf(n(a, 0), n(a, 1), n(a, 2), n(a, 3)); gs.fillPattern = null }
             "K" -> { gs.strokeCs = ColorSpace.Cmyk; gs.strokeColor = doubleArrayOf(n(a, 0), n(a, 1), n(a, 2), n(a, 3)); gs.strokePattern = null }
             "cs" -> {
-                val cs = ColorSpace.parse(file, a[0], res) ?: ColorSpace.Gray.also { sink.warn("Bilinmeyen renk uzayı") }
+                val cs = ColorSpace.parse(file, a[0], res) ?: ColorSpace.Gray.also { sink.warn(tr("Bilinmeyen renk uzayı")) }
                 gs.fillCs = cs; gs.fillColor = cs.initial(); gs.fillPattern = null
             }
             "CS" -> {
-                val cs = ColorSpace.parse(file, a[0], res) ?: ColorSpace.Gray.also { sink.warn("Bilinmeyen renk uzayı") }
+                val cs = ColorSpace.parse(file, a[0], res) ?: ColorSpace.Gray.also { sink.warn(tr("Bilinmeyen renk uzayı")) }
                 gs.strokeCs = cs; gs.strokeColor = cs.initial(); gs.strokePattern = null
             }
             "sc", "scn" -> {
@@ -397,10 +398,10 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val bm = file.resolve(d["BM"])
         val mode = (bm as? PdfName)?.name ?: file.name((bm as? PdfArr)?.items?.firstOrNull())
         if (mode != null) {
-            gs.blend = BlendMode.fromPdf(mode) ?: BlendMode.Normal.also { sink.warn("Bilinmeyen karışım modu: $mode") }
+            gs.blend = BlendMode.fromPdf(mode) ?: BlendMode.Normal.also { sink.warn(tr("Bilinmeyen karışım modu: %s", mode)) }
         }
         val smask = file.resolve(d["SMask"])
-        if (smask != null && (smask as? PdfName)?.name != "None") sink.warn("Opaklık maskeleri yok sayıldı")
+        if (smask != null && (smask as? PdfName)?.name != "None") sink.warn(tr("Opaklık maskeleri yok sayıldı"))
     }
 
     // ---- Yol kurma --------------------------------------------------------
@@ -529,7 +530,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
                 ?: Matrix.Identity
             return shadingPaint(file.resolve(d["Shading"]), patternBase * m)
         }
-        sink.warn("Desen dolguları düz renk olarak gösterilir")
+        sink.warn(tr("Desen dolguları düz renk olarak gösterilir"))
         return Paint.Solid(Rgba(0.6, 0.6, 0.6))
     }
 
@@ -540,7 +541,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val fn = PdfFunction.parse(file, sh["Function"])
         val coords = file.numbers(sh["Coords"])
         if (fn == null || coords == null || (type != 2 && type != 3)) {
-            sink.warn("Ağ (mesh) gradyanlar düz renk olarak gösterilir")
+            sink.warn(tr("Ağ (mesh) gradyanlar düz renk olarak gösterilir"))
             return Paint.Solid(Rgba(0.6, 0.6, 0.6))
         }
         val domain = file.numbers(sh["Domain"])?.takeIf { it.size >= 2 } ?: doubleArrayOf(0.0, 1.0)
@@ -613,7 +614,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             "Form" -> {
                 if (depth > 24) return
                 if (++formCalls > MAX_FORM_CALLS) {
-                    stop("Dosyada aşırı sayıda iç içe çizim var; bir kısmı açıldı")
+                    stop(tr("Dosyada aşırı sayıda iç içe çizim var; bir kısmı açıldı"))
                     return
                 }
                 val m = file.numbers(xo.dict["Matrix"])?.takeIf { it.size >= 6 }?.let { Matrix(it[0], it[1], it[2], it[3], it[4], it[5]) }
@@ -659,7 +660,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         while (p + 2 < d.size) {
             if (d[p] == 'E'.code.toByte() && d[p + 1] == 'I'.code.toByte() && isWs(d[p - 1]) && isWs(d[p + 2])) {
                 lx.pos = p + 2
-                sink.warn("Satır içi görseller atlandı")
+                sink.warn(tr("Satır içi görseller atlandı"))
                 return
             }
             p++
@@ -674,17 +675,17 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val h = file.int(xo.dict["Height"]) ?: return
         if (w <= 0 || h <= 0) return
         if (w.toLong() * h > MAX_IMAGE_PIXELS) {
-            sink.warn("Çok büyük bir görsel atlandı (${w}x$h)")
+            sink.warn(tr("Çok büyük bir görsel atlandı (%sx%s)", w, h))
             return
         }
         imagePixels += w.toLong() * h
         if (imagePixels > MAX_TOTAL_IMAGE_PIXELS) {
-            sink.warn("Görsellerin toplamı bellek sınırını aştığı için bazıları atlandı")
+            sink.warn(tr("Görsellerin toplamı bellek sınırını aştığı için bazıları atlandı"))
             return
         }
         val data = try { ImageDecoder.decode(file, xo, w, h, gs.fillCs.toRgb(gs.fillColor), sink) } catch (e: Exception) { null }
         if (data == null) {
-            sink.warn("Bir görsel okunamadı")
+            sink.warn(tr("Bir görsel okunamadı"))
             return
         }
         val m = gs.ctm * Matrix(1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0)
@@ -743,12 +744,12 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         // Harf biçimleri eldeyse metin Unicode'a çevrilemese de doğru görünür.
         val drawn = outline?.takeIf { it.isNotEmpty() }
         if (undecodable && sb.isBlank() && drawn == null) {
-            sink.warn("Bazı metinler okunamadı (font Unicode bilgisi içermiyor)")
+            sink.warn(tr("Bazı metinler okunamadı (font Unicode bilgisi içermiyor)"))
             return
         }
         if (sb.isEmpty() && drawn == null) return
         if (undecodable) {
-            if (drawn == null) sink.warn("Bazı karakterler okunamadı") else if (sb.isBlank()) sb.append("?")
+            if (drawn == null) sink.warn(tr("Bazı karakterler okunamadı")) else if (sb.isBlank()) sb.append("?")
         }
 
         val mode = gs.renderMode

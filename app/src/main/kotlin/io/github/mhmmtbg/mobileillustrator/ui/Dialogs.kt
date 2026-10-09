@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -48,9 +49,9 @@ fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm:
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { OutlinedTextField(value, { value = it }, singleLine = true, label = { Text("Ad") }) },
-        confirmButton = { TextButton(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) { Text("Tamam") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        text = { OutlinedTextField(value, { value = it }, singleLine = true, label = { Text(tr("Ad")) }) },
+        confirmButton = { TextButton(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) { Text(tr("Tamam")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
 }
 
@@ -58,13 +59,13 @@ fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm:
 fun WarningsDialog(warnings: List<String>, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Dosya açıldı, bazı özellikler farklı") },
+        title = { Text(tr("Dosya açıldı, bazı özellikler farklı")) },
         text = {
             Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (w in warnings) Text("• $w", style = MaterialTheme.typography.bodyMedium)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Tamam") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Tamam")) } },
     )
 }
 
@@ -72,15 +73,15 @@ fun WarningsDialog(warnings: List<String>, onDismiss: () -> Unit) {
 fun NewDocumentDialog(onDismiss: () -> Unit, onCreate: (Double, Double) -> Unit) {
     var w by remember { mutableStateOf("1080") }
     var h by remember { mutableStateOf("1080") }
-    val presets = listOf("Kare" to (1080 to 1080), "Yatay HD" to (1920 to 1080), "Dikey HD" to (1080 to 1920), "A4" to (595 to 842))
+    val presets = listOf(tr("Kare") to (1080 to 1080), tr("Yatay HD") to (1920 to 1080), tr("Dikey HD") to (1080 to 1920), "A4" to (595 to 842))
     val wv = w.replace(',', '.').toDoubleOrNull()
     val hv = h.replace(',', '.').toDoubleOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Yeni belge") },
+        title = { Text(tr("Yeni belge")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Açık belgenin yerini alır. Kaydetmediysen önce dışa aktar.", style = MaterialTheme.typography.bodySmall)
+                Text(tr("Geçerli belgen Belgelerim'de kalır; hiçbir şey silinmez."), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for ((label, size) in presets) {
                         Text(
@@ -95,15 +96,15 @@ fun NewDocumentDialog(onDismiss: () -> Unit, onCreate: (Double, Double) -> Unit)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(w, { w = it }, Modifier.weight(1f), singleLine = true, label = { Text("Genişlik (pt)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(h, { h = it }, Modifier.weight(1f), singleLine = true, label = { Text("Yükseklik (pt)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(w, { w = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Genişlik (pt)")) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(h, { h = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Yükseklik (pt)")) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(wv ?: 1080.0, hv ?: 1080.0) }, enabled = wv != null && hv != null && wv > 0 && hv > 0) { Text("Oluştur") }
+            TextButton(onClick = { onCreate(wv ?: 1080.0, hv ?: 1080.0) }, enabled = wv != null && hv != null && wv > 0 && hv > 0) { Text(tr("Oluştur")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
 }
 
@@ -122,32 +123,32 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
     val keys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (prompt.nodeId == null) "Metin ekle" else "Metni düzenle") },
+        title = { Text(if (prompt.nodeId == null) tr("Metin ekle") else tr("Metni düzenle")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Metin") }, minLines = 2, maxLines = 6)
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(tr("Metin")) }, minLines = 2, maxLines = 6)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text("Boyut") }, keyboardOptions = keys)
-                    OutlinedTextField(leading, { leading = it }, Modifier.weight(1f), singleLine = true, label = { Text("Satır aralığı") }, keyboardOptions = keys)
+                    OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Boyut")) }, keyboardOptions = keys)
+                    OutlinedTextField(leading, { leading = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Satır aralığı")) }, keyboardOptions = keys)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { bold = !bold }) {
                         Checkbox(bold, null)
-                        Text("Kalın")
+                        Text(tr("Kalın"))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { italic = !italic }) {
                         Checkbox(italic, null)
-                        Text("Eğik")
+                        Text(tr("Eğik"))
                     }
                 }
                 val aligns = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries
-                ChoiceRow("Hizalama", listOf("Sola" to (align == aligns[0]), "Ortala" to (align == aligns[1]), "Sağa" to (align == aligns[2]))) { align = aligns[it] }
+                ChoiceRow(tr("Hizalama"), listOf(tr("Sola") to (align == aligns[0]), tr("Ortala") to (align == aligns[1]), tr("Sağa") to (align == aligns[2]))) { align = aligns[it] }
                 Text("Font", style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val builtIn = listOf("Sans" to "sans-serif", "Serif" to "serif", "Mono" to "monospace")
                     val custom = fonts.map { it to "font:$it" }
                     // Belgedeki font bu cihazda yüklü değilse de listede görünür (seçim kaybolmasın).
-                    val missing = if (family.startsWith("font:") && custom.none { it.second == family }) listOf(family.removePrefix("font:") + " (yüklü değil)" to family) else emptyList()
+                    val missing = if (family.startsWith("font:") && custom.none { it.second == family }) listOf(tr("%s (yüklü değil)", family.removePrefix("font:")) to family) else emptyList()
                     for ((label, value) in builtIn + custom + missing) {
                         val on = family == value
                         Text(
@@ -163,7 +164,7 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
                         )
                     }
                 }
-                TextButton(onClick = onLoadFont) { Text("Font yükle (.ttf, .otf)…") }
+                TextButton(onClick = onLoadFont) { Text(tr("Font yükle (.ttf, .otf)…")) }
             }
         },
         confirmButton = {
@@ -177,9 +178,9 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
                     )
                 },
                 enabled = text.isNotBlank() && sizeValue != null && sizeValue > 0 && leadingValue != null && leadingValue > 0,
-            ) { Text("Tamam") }
+            ) { Text(tr("Tamam")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
 }
 
@@ -204,37 +205,37 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
     fun step(v: Float) = (v * 100).toInt() / 100f
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Renk seç") },
+        title = { Text(tr("Renk seç")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 val preview = if (cmykMode) Color(cmyk().toRgb().toArgb()) else Color(argb())
                 Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(preview))
                 (ink0 as? Ink.Spot)?.let { spot ->
                     Text(
-                        "Şu anki renk bir spot renk: ${spot.name} (%${(spot.tint * 100).toInt()}). Buradan renk seçersen spot tanımı kalkar.",
+                        tr("Şu anki renk bir spot renk: %s (%%%s). Buradan renk seçersen spot tanımı kalkar.", spot.name, (spot.tint * 100).toInt()),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                ChoiceRow("Renk modeli", listOf("RGB" to !cmykMode, "CMYK" to cmykMode)) { cmykMode = it == 1 }
+                ChoiceRow(tr("Renk modeli"), listOf("RGB" to !cmykMode, "CMYK" to cmykMode)) { cmykMode = it == 1 }
                 if (cmykMode) {
                     @Composable
                     fun ink(label: String, v: Float, set: (Float) -> Unit) {
                         Text("$label %${(v * 100).toInt()}", style = MaterialTheme.typography.labelMedium)
                         Slider(v, { set(step(it)) }, modifier = Modifier.semantics { contentDescription = label })
                     }
-                    ink("Camgöbeği (C)", c) { c = it }
-                    ink("Macenta (M)", m) { m = it }
-                    ink("Sarı (Y)", y) { y = it }
-                    ink("Siyah (K)", k) { k = it }
-                    Text("Ekrandaki renk yaklaşık bir önizlemedir; dosyaya bu CMYK değerleri yazılır.", style = MaterialTheme.typography.bodySmall)
+                    ink(tr("Camgöbeği (C)"), c) { c = it }
+                    ink(tr("Macenta (M)"), m) { m = it }
+                    ink(tr("Sarı (Y)"), y) { y = it }
+                    ink(tr("Siyah (K)"), k) { k = it }
+                    Text(tr("Ekrandaki renk yaklaşık bir önizlemedir; dosyaya bu CMYK değerleri yazılır."), style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("Ton", style = MaterialTheme.typography.labelMedium)
-                    Slider(hue, { hue = it; syncHex() }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = "Ton" })
-                    Text("Doygunluk", style = MaterialTheme.typography.labelMedium)
-                    Slider(sat, { sat = it; syncHex() }, modifier = Modifier.semantics { contentDescription = "Doygunluk" })
-                    Text("Parlaklık", style = MaterialTheme.typography.labelMedium)
-                    Slider(value, { value = it; syncHex() }, modifier = Modifier.semantics { contentDescription = "Parlaklık" })
+                    Text(tr("Ton"), style = MaterialTheme.typography.labelMedium)
+                    Slider(hue, { hue = it; syncHex() }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = tr("Ton") })
+                    Text(tr("Doygunluk"), style = MaterialTheme.typography.labelMedium)
+                    Slider(sat, { sat = it; syncHex() }, modifier = Modifier.semantics { contentDescription = tr("Doygunluk") })
+                    Text(tr("Parlaklık"), style = MaterialTheme.typography.labelMedium)
+                    Slider(value, { value = it; syncHex() }, modifier = Modifier.semantics { contentDescription = tr("Parlaklık") })
                     OutlinedTextField(
                         hex,
                         { raw ->
@@ -247,13 +248,13 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
                             }
                         },
                         singleLine = true,
-                        label = { Text("Onaltılık (RRGGBB)") },
+                        label = { Text(tr("Onaltılık (RRGGBB)")) },
                     )
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onPick(if (cmykMode) cmyk().toRgb() else Rgba.fromArgb(argb())) }) { Text("Uygula") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        confirmButton = { TextButton(onClick = { onPick(if (cmykMode) cmyk().toRgb() else Rgba.fromArgb(argb())) }) { Text(tr("Uygula")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
 }
 
@@ -284,23 +285,23 @@ fun StrokeOptionsDialog(vm: io.github.mhmmtbg.mobileillustrator.editor.EditorVie
     val s = vm.state
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Kontur seçenekleri") },
+        title = { Text(tr("Kontur seçenekleri")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 val caps = io.github.mhmmtbg.mobileillustrator.model.LineCap.entries
-                ChoiceRow("Uç", listOf("Düz" to (s.strokeCap == caps[0]), "Yuvarlak" to (s.strokeCap == caps[1]), "Kare" to (s.strokeCap == caps[2]))) {
+                ChoiceRow(tr("Uç"), listOf(tr("Düz") to (s.strokeCap == caps[0]), tr("Yuvarlak") to (s.strokeCap == caps[1]), tr("Kare") to (s.strokeCap == caps[2]))) {
                     vm.setStrokeStyle(cap = caps[it])
                 }
                 val joins = io.github.mhmmtbg.mobileillustrator.model.LineJoin.entries
-                ChoiceRow("Köşe", listOf("Sivri" to (s.strokeJoin == joins[0]), "Yuvarlak" to (s.strokeJoin == joins[1]), "Kesik" to (s.strokeJoin == joins[2]))) {
+                ChoiceRow(tr("Köşe"), listOf(tr("Sivri") to (s.strokeJoin == joins[0]), tr("Yuvarlak") to (s.strokeJoin == joins[1]), tr("Pah") to (s.strokeJoin == joins[2]))) {
                     vm.setStrokeStyle(join = joins[it])
                 }
                 val dashes = io.github.mhmmtbg.mobileillustrator.editor.DashStyle.entries
-                val labels = listOf("Düz", "Kesik", "Uzun", "Noktalı")
-                ChoiceRow("Çizgi", dashes.mapIndexed { i, d -> labels[i] to (s.dashStyle == d) }) { vm.setStrokeStyle(dash = dashes[it]) }
+                val labels = listOf(tr("Kesiksiz"), tr("Kesik"), tr("Uzun"), tr("Noktalı"))
+                ChoiceRow(tr("Çizgi türü"), dashes.mapIndexed { i, d -> labels[i] to (s.dashStyle == d) }) { vm.setStrokeStyle(dash = dashes[it]) }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Tamam") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Tamam")) } },
     )
 }
 
@@ -325,7 +326,7 @@ fun TransformDialog(
     val keys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Dönüştür") },
+        title = { Text(tr("Dönüştür")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -336,29 +337,29 @@ fun TransformDialog(
                     OutlinedTextField(
                         w,
                         { w = it; if (lock) num(it)?.let { v -> if (ratio > 0) h = fmt(v / ratio) } },
-                        Modifier.weight(1f), singleLine = true, label = { Text("Genişlik") }, keyboardOptions = keys,
+                        Modifier.weight(1f), singleLine = true, label = { Text(tr("Genişlik")) }, keyboardOptions = keys,
                     )
                     OutlinedTextField(
                         h,
                         { h = it; if (lock) num(it)?.let { v -> w = fmt(v * ratio) } },
-                        Modifier.weight(1f), singleLine = true, label = { Text("Yükseklik") }, keyboardOptions = keys,
+                        Modifier.weight(1f), singleLine = true, label = { Text(tr("Yükseklik")) }, keyboardOptions = keys,
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { lock = !lock }) {
                     Checkbox(lock, null)
-                    Text("Oranı koru")
+                    Text(tr("Oranı koru"))
                 }
-                OutlinedTextField(angle, { angle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Döndür (derece)") }, keyboardOptions = keys)
+                OutlinedTextField(angle, { angle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(tr("Döndür (derece)")) }, keyboardOptions = keys)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { onFlip(true); onDismiss() }) { Text("Yatay çevir") }
-                    TextButton(onClick = { onFlip(false); onDismiss() }) { Text("Dikey çevir") }
+                    TextButton(onClick = { onFlip(true); onDismiss() }) { Text(tr("Yatay çevir")) }
+                    TextButton(onClick = { onFlip(false); onDismiss() }) { Text(tr("Dikey çevir")) }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(num(x)!!, num(y)!!, num(w)!!, num(h)!!, num(angle)!!) }, enabled = valid) { Text("Uygula") }
+            TextButton(onClick = { onApply(num(x)!!, num(y)!!, num(w)!!, num(h)!!, num(angle)!!) }, enabled = valid) { Text(tr("Uygula")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
 }
 
@@ -382,7 +383,7 @@ fun GradientDialog(
     var picking by remember { mutableStateOf(-1) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Gradyan") },
+        title = { Text(tr("Gradyan")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val brushStops = stops.sortedBy { it.offset }.map { it.offset.toFloat() to Color(it.color.toArgb()) }.toTypedArray()
@@ -390,23 +391,23 @@ fun GradientDialog(
                     Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(8.dp))
                         .background(if (brushStops.size >= 2) androidx.compose.ui.graphics.Brush.horizontalGradient(*brushStops) else androidx.compose.ui.graphics.SolidColor(Color.Gray)),
                 )
-                ChoiceRow("Tür", listOf("Doğrusal" to !radial, "Dairesel" to radial)) { radial = it == 1 }
+                ChoiceRow(tr("Tür"), listOf(tr("Doğrusal") to !radial, tr("Dairesel") to radial)) { radial = it == 1 }
                 if (!radial) {
-                    Text("Açı: ${angle.toInt()}°", style = MaterialTheme.typography.labelMedium)
-                    Slider(angle, { angle = (it / 5).toInt() * 5f }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = "Gradyan açısı" })
+                    Text(tr("Açı: %s°", angle.toInt()), style = MaterialTheme.typography.labelMedium)
+                    Slider(angle, { angle = (it / 5).toInt() * 5f }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = tr("Gradyan açısı") })
                 }
                 stops.forEachIndexed { i, stop ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            Modifier.width(44.dp).height(44.dp).clickable(role = Role.Button) { picking = i }.semantics { contentDescription = "Durak ${i + 1} rengi" },
+                            Modifier.width(44.dp).height(44.dp).clickable(role = Role.Button) { picking = i }.semantics { contentDescription = tr("Durak %s rengi", i + 1) },
                             contentAlignment = Alignment.Center,
                         ) { ColorDot(stop.color, Modifier.width(28.dp).height(28.dp)) }
                         Slider(
                             stop.offset.toFloat(),
                             { v -> stops = stops.toMutableList().also { l -> l[i] = stop.copy(offset = (v * 100).toInt() / 100.0) } },
-                            modifier = Modifier.weight(1f).semantics { contentDescription = "Durak ${i + 1} konumu" },
+                            modifier = Modifier.weight(1f).semantics { contentDescription = tr("Durak %s konumu", i + 1) },
                         )
-                        TextButton(onClick = { stops = stops.filterIndexed { k, _ -> k != i } }, enabled = stops.size > 2) { Text("Sil") }
+                        TextButton(onClick = { stops = stops.filterIndexed { k, _ -> k != i } }, enabled = stops.size > 2) { Text(tr("Sil")) }
                     }
                 }
                 TextButton(
@@ -422,13 +423,13 @@ fun GradientDialog(
                         stops = stops + mid
                     },
                     enabled = stops.size < 6,
-                ) { Text("Durak ekle") }
+                ) { Text(tr("Durak ekle")) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(io.github.mhmmtbg.mobileillustrator.model.GradientSpec(radial, angle.toDouble(), stops.sortedBy { it.offset })) }) { Text("Uygula") }
+            TextButton(onClick = { onApply(io.github.mhmmtbg.mobileillustrator.model.GradientSpec(radial, angle.toDouble(), stops.sortedBy { it.offset })) }) { Text(tr("Uygula")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
     if (picking in stops.indices) {
         val i = picking
@@ -443,14 +444,15 @@ fun GradientDialog(
 fun CrashDialog(onShare: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Uygulama geçen sefer beklenmedik biçimde kapandı") },
+        title = { Text(tr("Uygulama geçen sefer beklenmedik biçimde kapandı")) },
         text = {
             Text(
-                "Çalışman otomatik kaydedildiği için yerinde olmalı. Hatanın ayrıntısı cihazında kaydedildi; " +
-                    "düzeltilebilmesi için raporu geliştiriciyle paylaşabilirsin. Rapor yalnızca teknik hata bilgisini ve cihaz modelini içerir.",
+                tr(
+                    "Çalışman otomatik kaydedildiği için yerinde olmalı. Hatanın ayrıntısı cihazında kaydedildi; düzeltilebilmesi için raporu geliştiriciyle paylaşabilirsin. Rapor yalnızca teknik hata bilgisini ve cihaz modelini içerir.",
+                ),
             )
         },
-        confirmButton = { TextButton(onClick = onShare) { Text("Raporu paylaş") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Kapat") } },
+        confirmButton = { TextButton(onClick = onShare) { Text(tr("Raporu paylaş")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Kapat")) } },
     )
 }

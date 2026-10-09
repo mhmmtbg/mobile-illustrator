@@ -2,6 +2,7 @@ package io.github.mhmmtbg.mobileillustrator
 
 import android.app.Application
 import android.os.Build
+import io.github.mhmmtbg.mobileillustrator.model.L10n
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -13,6 +14,7 @@ import java.io.StringWriter
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        applyLanguage(this)
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {
@@ -31,5 +33,25 @@ class App : Application() {
 
     companion object {
         fun crashFile(app: Application) = File(app.filesDir, "last-crash.txt")
+
+        private fun languageFile(app: Application) = File(app.filesDir, "language")
+
+        /**
+         * Arayüz dili: kullanıcı menüden seçtiyse o ("tr" ya da "en"), seçmediyse cihazın dili.
+         * Türkçe dışındaki cihazlarda İngilizce gösterilir.
+         */
+        fun applyLanguage(app: Application) {
+            val chosen = try { languageFile(app).readText().trim() } catch (e: Exception) { "" }
+            L10n.english = when (chosen) {
+                "tr" -> false
+                "en" -> true
+                else -> java.util.Locale.getDefault().language != "tr"
+            }
+        }
+
+        fun setLanguage(app: Application, code: String) {
+            try { languageFile(app).writeText(code) } catch (e: Exception) { /* yazılamazsa bu oturum için geçerli olur */ }
+            L10n.english = code == "en"
+        }
     }
 }

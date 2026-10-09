@@ -12,15 +12,17 @@ En üstteki derlemeyi indirip kurman yeterli. Tüm derlemeler aynı anahtarla im
 eskisinin üzerine kurulur. Android 8.0 (API 26) ve üzeri gerekir.
 
 Her derleme bir emülatörde otomatik denenir: gerçek bir .ai dosyası açılır, katmanlar gezilir,
-nesneler taşınır, çizim araçları kullanılır, uygulama kapatılıp açılır. Ekran görüntüleri aynı
-Release sayfasına eklenir.
+nesneler taşınır, çizim araçları kullanılır, dosya kaydedilip yeniden açılır, çok parmaklı hareketler ve
+çizim çıktısı onaylı görüntüyle karşılaştırılır. Yayımlanan (küçültülmüş) APK ayrıca denenir.
+Ekran görüntüleri aynı Release sayfasına eklenir.
 
 ## Özellikler
 
-**Dosyalar**
+**Belgeler**
+- Belgelerim: tüm çalışmaların küçük resimleriyle listelenir; yeni belge açmak eskisini silmez.
 - Aç: `.ai` (Illustrator 9 ve sonrası, PDF uyumlu), `.pdf`, `.svg`. Dosya yöneticisinden "birlikte aç" da çalışır.
-- Kaydet: `.ai`, PDF, SVG, PNG (saydam zemin).
-- Otomatik kayıt: uygulama kapansa da son çalışma geri gelir.
+- Kaydet açtığın dosyanın üzerine yazar; Farklı kaydet yeni bir `.ai` oluşturur. PDF, SVG ve PNG (saydam zemin) dışa aktarılır.
+- Otomatik kayıt: uygulama kapansa da çalışma yerinde kalır. Çökme olursa bir sonraki açılışta rapor paylaşma seçeneği çıkar; hiçbir şey kendiliğinden gönderilmez.
 
 **Katmanlar**
 - Dosyadaki katmanlar adları, görünürlükleri ve kilitleriyle gelir; çalışma yüzeyleri korunur.
@@ -28,15 +30,20 @@ Release sayfasına eklenir.
 - Her katmanın içindeki nesne ağacı (gruplar, kırpma grupları) panelden gezilir ve seçilir.
 
 **Çizim ve düzenleme**
-- Seçim: taşı, köşelerden orantılı ya da kenarlardan tek yönde ölçekle, döndür, çerçeveyle çoklu seç.
+- Seçim: taşı, ölçekle, döndür, çerçeveyle çoklu seç; sayısal genişlik/yükseklik/açı, yatay ve dikey çevirme.
 - Doğrudan seçim: düğümleri ve tutamaçları sürükle, yola dokunarak düğüm ekle, sil, köşe/yumuşak çevir.
-- Kalem (Bezier), kurşun kalem (serbest el, otomatik yumuşatma), dikdörtgen, elips, çizgi, metin.
-- Dolgu ve kontur rengi, özel renk seçici, kontur kalınlığı, opaklık.
-- Grupla, grubu çöz, çoğalt, öne/arkaya gönder, geri al/yinele.
-- Görsel yerleştirme (galeriden).
+- Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık.
+- Hizalama ve dağıtma, kenarlara ve merkezlere yakalama (kılavuz çizgileriyle).
+- Şekil işlemleri: birleştir, öndekini çıkar, kesiştir, dışla. Kırpma maskesi yap/bırak.
+- Dolgu ve kontur: düz renk, doğrusal/dairesel gradyan (duraklar ve açı), opaklık; kontur kalınlığı, uç, köşe, kesikli çizgi.
+- Renk seçici RGB (ton/doygunluk/parlaklık, onaltılık) ve CMYK modunda çalışır.
+- Metin: çok satır, hizalama, satır aralığı, kalın/eğik, kendi `.ttf`/`.otf` fontunu yükleme, yola çevirme.
+- Grupla, grubu çöz, çoğalt, sıralama, geri al/yinele, görsel yerleştirme.
 
 **Gezinme:** iki parmakla kaydır ve yakınlaştır. Karmaşık belgelerde hareket sırasında önbellekten
-çizilir, parmaklar kalkınca yeniden keskinleşir.
+çizilir, parmaklar kalkınca yeniden keskinleşir; görünmeyen nesneler çizilmez.
+
+**Dil:** Türkçe ve İngilizce. Cihaz dili Türkçe değilse İngilizce açılır; Dosya menüsünden değiştirilir.
 
 ## .ai desteği: ne gelir, ne gelmez
 
@@ -83,6 +90,19 @@ JDK 17 ve Android SDK (platform 36) gerekir.
 ./gradlew :core-model:test :io-svg:test :io-ai:test
 ./gradlew :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Kendi anahtarınla imzalama
+
+Depoda gizli anahtar tanımlı değilse APK, depodaki ortak hata ayıklama anahtarıyla imzalanır; bu
+mağaza yayını için uygun değildir. Kendi anahtarınla imzalamak için depo ayarlarında şu gizli
+değerleri tanımla: `SIGNING_KEYSTORE_BASE64` (anahtar deposunun base64 hali),
+`SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`. Anahtar değişince eski
+kurulumun üzerine güncelleme yapılamaz; uygulamayı kaldırıp yeniden kurmak gerekir.
+
+## Çeviriler
+
+Arayüz metinleri kaynakta Türkçedir; İngilizce karşılıkları `core-model` içindeki `L10n.kt`
+tablosundadır. Yeni bir metin eklerken `tr("…")` ile sar ve tabloya karşılığını ekle.
 
 ## Teşekkür
 

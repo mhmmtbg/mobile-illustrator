@@ -1,5 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import io.github.mhmmtbg.mobileillustrator.model.trName
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import android.graphics.BitmapFactory
 import android.text.format.DateUtils
 import androidx.compose.foundation.Image
@@ -69,19 +71,19 @@ fun GalleryScreen(
             // Arkadaki tuvale dokunuş geçmesin
             .clickable(interactionSource = null, indication = null) {}
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .semantics { contentDescription = "Belgelerim ekranı" },
+            .semantics { contentDescription = tr("Belgelerim ekranı") },
     ) {
         Row(Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Belgelerim", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = AppColors.OnPanel)
-            GalleryAction("Yeni", onNew)
-            GalleryAction("Dosya aç", onImport)
-            BarButton(AppIcons.Close, "Belgelerimi kapat", onClick = onClose)
+            Text(tr("Belgelerim"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = AppColors.OnPanel)
+            GalleryAction(tr("Yeni"), onNew)
+            GalleryAction(tr("Dosya aç"), onImport)
+            BarButton(AppIcons.Close, tr("Belgelerimi kapat"), onClick = onClose)
         }
         HorizontalDivider(color = AppColors.Divider)
         if (documents.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    "Henüz kayıtlı belge yok. Çizmeye başladığında ya da bir dosya açtığında burada görünür.",
+                    tr("Henüz kayıtlı belge yok. Çizmeye başladığında ya da bir dosya açtığında burada görünür."),
                     color = AppColors.OnPanelMuted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -102,18 +104,18 @@ fun GalleryScreen(
     deleting?.let { doc ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("\"${doc.name}\" silinsin mi?") },
+            title = { Text(tr("\"%s\" silinsin mi?", trName(doc.name))) },
             text = {
                 Text(
                     if (doc.linkUri != null) {
-                        "Belge uygulamadan silinir. Cihazına kaydettiğin dosyaya dokunulmaz."
+                        tr("Belge uygulamadan silinir. Cihazına kaydettiğin dosyaya dokunulmaz.")
                     } else {
-                        "Bu belge yalnızca uygulamada duruyor. Silersen geri getirilemez."
+                        tr("Bu belge yalnızca uygulamada duruyor. Silersen geri getirilemez.")
                     },
                 )
             },
-            confirmButton = { TextButton(onClick = { deleting = null; onDelete(doc.id) }) { Text("Sil", color = Color(0xFFFF8A8A)) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Vazgeç") } },
+            confirmButton = { TextButton(onClick = { deleting = null; onDelete(doc.id) }) { Text(tr("Sil"), color = Color(0xFFFF8A8A)) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(tr("Vazgeç")) } },
         )
     }
 }
@@ -146,7 +148,7 @@ private fun DocumentCard(doc: StoredDocument, current: Boolean, onOpen: () -> Un
             .background(AppColors.PanelRaised)
             .border(1.5.dp, if (current) AppColors.Accent else Color.Transparent, RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onOpen)
-            .semantics { contentDescription = "Belge: ${doc.name}" },
+            .semantics { contentDescription = tr("Belge: %s", trName(doc.name)) },
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(1.2f).background(AppColors.Pasteboard), contentAlignment = Alignment.Center) {
             if (thumb != null) {
@@ -155,25 +157,25 @@ private fun DocumentCard(doc: StoredDocument, current: Boolean, onOpen: () -> Un
         }
         Row(Modifier.padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                Text(doc.name, color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(trName(doc.name), color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val whenText = DateUtils.getRelativeTimeSpanString(doc.modified, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
                 val status = when {
-                    doc.linkUri == null -> "yalnızca uygulamada"
-                    doc.unsaved -> "dosyaya kaydedilmedi"
-                    else -> "dosyaya kaydedildi"
+                    doc.linkUri == null -> tr("yalnızca uygulamada")
+                    doc.unsaved -> tr("dosyaya kaydedilmedi")
+                    else -> tr("dosyaya kaydedildi")
                 }
                 Text("$whenText · $status", color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Box {
                 Box(
-                    Modifier.size(44.dp).clickable(role = Role.Button) { menu = true }.semantics { contentDescription = "${doc.name} seçenekleri" },
+                    Modifier.size(44.dp).clickable(role = Role.Button) { menu = true }.semantics { contentDescription = tr("%s seçenekleri", trName(doc.name)) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(AppIcons.More, null, Modifier.size(20.dp), tint = AppColors.OnPanel)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Aç") }, onClick = { menu = false; onOpen() })
-                    DropdownMenuItem(text = { Text("Sil") }, onClick = { menu = false; onDelete() })
+                    DropdownMenuItem(text = { Text(tr("Aç")) }, onClick = { menu = false; onOpen() })
+                    DropdownMenuItem(text = { Text(tr("Sil")) }, onClick = { menu = false; onDelete() })
                 }
             }
         }

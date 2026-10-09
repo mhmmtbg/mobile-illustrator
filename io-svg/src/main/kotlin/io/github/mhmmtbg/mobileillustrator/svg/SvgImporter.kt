@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.svg
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.Artboard
 import io.github.mhmmtbg.mobileillustrator.model.BlendMode
@@ -44,7 +45,7 @@ object SvgImporter {
 
     fun import(bytes: ByteArray, name: String): ImportResult {
         val root = try {
-            if (bytes.size > 96 * 1024 * 1024) throw ImportException("SVG dosyası çok büyük")
+            if (bytes.size > 96 * 1024 * 1024) throw ImportException(tr("SVG dosyası çok büyük"))
             val f = DocumentBuilderFactory.newInstance()
             f.isNamespaceAware = false
             // Varlık açılımı bombalarına ("billion laughs") karşı ayrıştırıcının kendi sınırları
@@ -69,23 +70,23 @@ object SvgImporter {
         } catch (e: ImportException) {
             throw e
         } catch (e: Exception) {
-            throw ImportException("SVG dosyası okunamadı: ${e.message ?: "geçersiz XML"}")
+            throw ImportException(tr("SVG dosyası okunamadı: %s", e.message ?: tr("geçersiz XML")))
         } catch (e: StackOverflowError) {
-            throw ImportException("SVG dosyası çok derin iç içe yapı içeriyor")
+            throw ImportException(tr("SVG dosyası çok derin iç içe yapı içeriyor"))
         } catch (e: OutOfMemoryError) {
-            throw ImportException("SVG dosyası belleğe sığmayacak kadar büyük")
+            throw ImportException(tr("SVG dosyası belleğe sığmayacak kadar büyük"))
         }
-        if (root == null || root.tagName.substringAfter(':') != "svg") throw ImportException("Dosya bir SVG değil")
+        if (root == null || root.tagName.substringAfter(':') != "svg") throw ImportException(tr("Dosya bir SVG değil"))
         try {
             return Reader(root, name).run()
         } catch (e: ImportException) {
             throw e
         } catch (e: OutOfMemoryError) {
-            throw ImportException("Dosya belleğe sığmayacak kadar büyük ya da karmaşık")
+            throw ImportException(tr("Dosya belleğe sığmayacak kadar büyük ya da karmaşık"))
         } catch (e: StackOverflowError) {
-            throw ImportException("Dosya çok derin iç içe yapı içeriyor")
+            throw ImportException(tr("Dosya çok derin iç içe yapı içeriyor"))
         } catch (e: RuntimeException) {
-            throw ImportException("SVG dosyası bozuk görünüyor ve okunamadı")
+            throw ImportException(tr("SVG dosyası bozuk görünüyor ve okunamadı"))
         }
     }
 
@@ -325,7 +326,7 @@ object SvgImporter {
 
         private fun node(e: Element, parent: Style): Node? {
             if (nodeDepth > 256 || nodeCount > 400_000) {
-                warnings += "Dosya çok büyük ya da çok derin; bir kısmı açıldı"
+                warnings += tr("Dosya çok büyük ya da çok derin; bir kısmı açıldı")
                 return null
             }
             nodeCount++
@@ -370,7 +371,7 @@ object SvgImporter {
             val ref = props["clip-path"]?.let(::urlId) ?: return n
             val cp = ids[ref] ?: return n
             if (cp.getAttribute("clipPathUnits") == "objectBoundingBox") {
-                warnings += "Nesne kutusuna göre tanımlı kırpma yolları yok sayıldı"
+                warnings += tr("Nesne kutusuna göre tanımlı kırpma yolları yok sayıldı")
                 return n
             }
             val subpaths = ArrayList<SubPath>()
@@ -440,7 +441,7 @@ object SvgImporter {
         private fun image(e: Element, props: Map<String, String>): Node? {
             val href = e.getAttribute("href").ifEmpty { e.getAttribute("xlink:href") }
             if (!href.startsWith("data:")) {
-                warnings += "Dış dosyaya bağlı görseller atlandı"
+                warnings += tr("Dış dosyaya bağlı görseller atlandı")
                 return null
             }
             val comma = href.indexOf(',')
@@ -448,7 +449,7 @@ object SvgImporter {
             val meta = href.substring(5, comma)
             val mime = meta.substringBefore(';').lowercase()
             if (mime != "image/png" && mime != "image/jpeg" && mime != "image/jpg") {
-                warnings += "Desteklenmeyen gömülü görsel türü: $mime"
+                warnings += tr("Desteklenmeyen gömülü görsel türü: %s", mime)
                 return null
             }
             val bytes = try {
@@ -507,7 +508,7 @@ object SvgImporter {
             walk(e)
             val content = if (e.getAttribute("xml:space") == "preserve") sb.toString().replace('\n', ' ') else sb.toString().replace(Regex("\\s+"), " ").trim()
             if (content.isEmpty()) return null
-            if (elements(e).size > 1) warnings += "Çok parçalı metinler tek satır olarak açıldı"
+            if (elements(e).size > 1) warnings += tr("Çok parçalı metinler tek satır olarak açıldı")
             val approx = content.length * st.fontSize * 0.55
             val shift = when (st.anchor) { "middle" -> -approx / 2; "end" -> -approx; else -> 0.0 }
             val n = TextNode(
@@ -643,7 +644,7 @@ object SvgImporter {
             val first = chain.firstOrNull() ?: return null
             val tag = first.tagName.substringAfter(':')
             if (tag != "linearGradient" && tag != "radialGradient") {
-                if (tag == "pattern") warnings += "Desen dolguları düz renk olarak gösterilir"
+                if (tag == "pattern") warnings += tr("Desen dolguları düz renk olarak gösterilir")
                 return if (tag == "pattern") Paint.Solid(Rgba(0.6, 0.6, 0.6, opacity)) else null
             }
             fun a(name: String): String? = chain.firstOrNull { it.hasAttribute(name) }?.getAttribute(name)

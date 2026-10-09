@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.model.ImageData
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 
@@ -13,12 +14,12 @@ internal object ImageDecoder {
             null -> {}
             "DCTDecode", "DCT" -> {
                 val cs = ColorSpace.parse(file, d["ColorSpace"], null)
-                if (cs is ColorSpace.Cmyk) sink.warn("CMYK JPEG görsellerin renkleri farklı görünebilir")
-                if (d["SMask"] != null) sink.warn("JPEG görsellerdeki saydamlık maskesi yok sayıldı")
+                if (cs is ColorSpace.Cmyk) sink.warn(tr("CMYK JPEG görsellerin renkleri farklı görünebilir"))
+                if (d["SMask"] != null) sink.warn(tr("JPEG görsellerdeki saydamlık maskesi yok sayıldı"))
                 return ImageData(dec.bytes, "image/jpeg", w, h)
             }
             else -> {
-                sink.warn("Desteklenmeyen görsel sıkıştırması: ${dec.pending}")
+                sink.warn(tr("Desteklenmeyen görsel sıkıştırması: %s", dec.pending))
                 return null
             }
         }
@@ -64,7 +65,7 @@ internal object ImageDecoder {
             if (sd.pending == null && sb == 8 && sw > 0 && sh > 0 && sd.bytes.size >= sw * sh) {
                 alpha = sd.bytes; aw = sw; ah = sh
             } else {
-                sink.warn("Bir görselin saydamlık maskesi okunamadı")
+                sink.warn(tr("Bir görselin saydamlık maskesi okunamadı"))
             }
         }
 

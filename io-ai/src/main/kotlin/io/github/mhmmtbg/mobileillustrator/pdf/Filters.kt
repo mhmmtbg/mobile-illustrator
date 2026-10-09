@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import java.io.ByteArrayOutputStream
 import java.util.zip.DataFormatException
 import java.util.zip.Inflater
@@ -15,7 +16,7 @@ object Filters {
     /** Sınırı aşınca [PdfException] atan çıktı tamponu. */
     private class Bounded(initial: Int) : ByteArrayOutputStream(minOf(maxOf(initial, 1024), 8 * 1024 * 1024)) {
         private fun check(extra: Int) {
-            if (count.toLong() + extra > MAX_DECODED_BYTES) throw PdfException("Dosyadaki bir veri akışı çok büyük")
+            if (count.toLong() + extra > MAX_DECODED_BYTES) throw PdfException(tr("Dosyadaki bir veri akışı çok büyük"))
         }
 
         override fun write(b: Int) { check(1); super.write(b) }
@@ -39,7 +40,7 @@ object Filters {
                 "RunLengthDecode", "RL" -> runLength(data)
                 in ImageFilters -> return Decoded(data, f)
                 "Crypt" -> data
-                else -> throw PdfException("Desteklenmeyen süzgeç: $f")
+                else -> throw PdfException(tr("Desteklenmeyen süzgeç: %s", f))
             }
         }
         return Decoded(data, null)

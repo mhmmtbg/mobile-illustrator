@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -70,7 +71,7 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
 
     Canvas(
         modifier
-            .semantics { contentDescription = "Tuval" }
+            .semantics { contentDescription = tr("Tuval") }
             .onSizeChanged { vm.onCanvasSize(it.toSize()) }
             .pointerInput(vm) {
                 val slop = viewConfiguration.touchSlop

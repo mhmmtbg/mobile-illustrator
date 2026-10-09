@@ -32,9 +32,19 @@ dump() {
 
 # Etiketi (content-desc ya da text) verilen öğenin bir özniteliğini yazar; "center" merkezini verir.
 node() {
-  python3 - "$OUT/ui.xml" "$1" "$2" <<'PY'
+  python3 - "$OUT/ui.xml" "$1" "$2" "$EN" "$L10N" <<'PY'
 import re, sys, xml.etree.ElementTree as ET
-path, label, attr = sys.argv[1:4]
+path, label, attr, en, l10n = sys.argv[1:6]
+if en == "1":
+    # Arayüz İngilizce ise etiketler uygulamanın kendi çeviri tablosundan çevrilir.
+    table = dict(re.findall(r'^\s*"((?:[^"\\]|\\.)*)" to "((?:[^"\\]|\\.)*)",', open(l10n, encoding="utf-8").read(), re.M))
+    if label in table:
+        label = table[label]
+    else:
+        for key, value in table.items():
+            if key.startswith("%s ") and label.endswith(key[2:]):
+                label = value.replace("%s", label[: -len(key[2:])])
+                break
 for n in ET.parse(path).iter("node"):
     if n.get("content-desc") == label or n.get("text") == label:
         if attr == "center":
@@ -58,6 +68,12 @@ dismiss() { if has "Tamam"; then tap "Tamam"; fi; }
 
 adb install -r "$APK"
 adb logcat -c
+# Test etiketleri Türkçe. Hata ayıklama derlemesinde arayüz dili Türkçeye sabitlenir; sürüm derlemesinde
+# buna izin yoktur, orada cihaz dili (İngilizce) geçerlidir ve etiketler çeviri tablosundan çevrilir.
+L10N="$(dirname "$0")/../core-model/src/main/kotlin/io/github/mhmmtbg/mobileillustrator/model/L10n.kt"
+if adb shell "run-as $PKG sh -c 'mkdir -p files && echo tr > files/language'" > /dev/null 2>&1 \
+  && [ "$(adb shell "run-as $PKG cat files/language" 2> /dev/null | tr -d '\r')" = tr ]; then EN=0; else EN=1; fi
+echo "Arayüz dili: $([ "$EN" = 1 ] && echo İngilizce || echo Türkçe)"
 adb shell am start -W -n "$PKG/.MainActivity"
 sleep 8
 alive "açılış"

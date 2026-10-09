@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import java.io.File
 import java.util.Properties
 import java.util.UUID
@@ -76,7 +77,7 @@ class DocumentStore(private val root: File) {
         val target = dataFile(meta.id)
         if (!tmp.renameTo(target)) {
             target.delete()
-            if (!tmp.renameTo(target)) throw java.io.IOException("Belge kaydedilemedi")
+            if (!tmp.renameTo(target)) throw java.io.IOException(tr("Belge kaydedilemedi"))
         }
         if (thumbnail != null) thumbFile(meta.id).writeBytes(thumbnail)
         writeMeta(meta)

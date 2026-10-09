@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.ai
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.model.Artboard
 import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.withBlendMode
@@ -48,9 +49,9 @@ object AiImporter {
     fun import(bytes: ByteArray, name: String): ImportResult {
         when (AiFormat.sniff(bytes)) {
             AiFormat.Container.PostScript ->
-                throw ImportException("Bu dosya eski PostScript tabanlı .ai biçiminde (Illustrator 8 ve öncesi). Illustrator'da açıp yeniden kaydedin.")
+                throw ImportException(tr("Bu dosya eski PostScript tabanlı .ai biçiminde (Illustrator 8 ve öncesi). Illustrator'da açıp yeniden kaydedin."))
             AiFormat.Container.Unknown ->
-                throw ImportException("Dosya bir Illustrator ya da PDF dosyası gibi görünmüyor.")
+                throw ImportException(tr("Dosya bir Illustrator ya da PDF dosyası gibi görünmüyor."))
             AiFormat.Container.Pdf -> {}
         }
         // Dosya güvenilmez girdidir: hangi hata çıkarsa çıksın uygulama çökmemeli, anlaşılır bir ileti dönmeli.
@@ -59,13 +60,13 @@ object AiImporter {
         } catch (e: ImportException) {
             throw e
         } catch (e: PdfException) {
-            throw ImportException(e.message ?: "Dosya okunamadı")
+            throw ImportException(e.message ?: tr("Dosya okunamadı"))
         } catch (e: OutOfMemoryError) {
-            throw ImportException("Dosya belleğe sığmayacak kadar büyük ya da karmaşık")
+            throw ImportException(tr("Dosya belleğe sığmayacak kadar büyük ya da karmaşık"))
         } catch (e: StackOverflowError) {
-            throw ImportException("Dosya çok derin iç içe yapı içeriyor")
+            throw ImportException(tr("Dosya çok derin iç içe yapı içeriyor"))
         } catch (e: RuntimeException) {
-            throw ImportException("Dosya bozuk görünüyor ve okunamadı")
+            throw ImportException(tr("Dosya bozuk görünüyor ve okunamadı"))
         }
     }
 
@@ -140,8 +141,8 @@ object AiImporter {
             }
             val pages = ArrayList<Page>()
             collectPages(file.dict(root["Pages"]), null, null, pages, HashSet(), 0)
-            if (pages.isEmpty()) throw ImportException("Dosyada sayfa bulunamadı")
-            if (pages.size > MAX_PAGES) warn("Yalnızca ilk $MAX_PAGES sayfa açıldı")
+            if (pages.isEmpty()) throw ImportException(tr("Dosyada sayfa bulunamadı"))
+            if (pages.size > MAX_PAGES) warn(tr("Yalnızca ilk %s sayfa açıldı", MAX_PAGES))
 
             val artboards = ArrayList<Artboard>()
             var x = 0.0
@@ -159,9 +160,9 @@ object AiImporter {
                 try {
                     runner.run(pageContent(page.dict), page.resources, base)
                 } catch (e: PdfException) {
-                    warn("Sayfa ${i + 1} tam okunamadı: ${e.message}")
+                    warn(tr("Sayfa %s tam okunamadı: %s", i + 1, e.message))
                 } catch (e: StackOverflowError) {
-                    warn("Sayfa ${i + 1} çok derin iç içe yapı içeriyor")
+                    warn(tr("Sayfa %s çok derin iç içe yapı içeriyor", i + 1))
                 }
                 active = null
                 x += w + ARTBOARD_GAP

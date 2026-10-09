@@ -15,6 +15,8 @@ mkdir -p "$OUT"
 echo "== 1) Araç testleri =="
 adb install -r "$DIST/test/app-debug.apk" > /dev/null
 adb install -r "$DIST/test/app-debug-androidTest.apk" > /dev/null
+# Testler arayüz öğelerini Türkçe etiketleriyle bulur; dil cihazdan bağımsız olarak sabitlenir.
+adb shell "run-as $PKG sh -c 'mkdir -p files && echo tr > files/language'"
 adb shell am instrument -w "$PKG.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r' | tee "$OUT/arac-testleri.txt"
 # Çizilen görüntüyü al (onaylı görüntüyle karşılaştırma için sürüm sayfasına eklenir).
 adb shell run-as "$PKG" cat files/render-actual.png > "$OUT/cizim-android.png" 2> /dev/null || true

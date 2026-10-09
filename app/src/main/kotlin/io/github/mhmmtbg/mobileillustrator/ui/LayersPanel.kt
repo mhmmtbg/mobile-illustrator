@@ -1,5 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import io.github.mhmmtbg.mobileillustrator.model.trName
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -74,11 +76,11 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
         if (layer.id in state.expanded) addNodes(layer.children, 1)
     }
 
-    Column(modifier.background(AppColors.Panel).semantics { contentDescription = "Katman paneli" }) {
+    Column(modifier.background(AppColors.Panel).semantics { contentDescription = tr("Katman paneli") }) {
         Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Katmanlar", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = AppColors.OnPanel)
-            BarButton(AppIcons.Add, "Katman ekle", onClick = vm::addLayer)
-            BarButton(AppIcons.Close, "Paneli kapat", onClick = vm::toggleLayersPanel)
+            Text(tr("Katmanlar"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = AppColors.OnPanel)
+            BarButton(AppIcons.Add, tr("Katman ekle"), onClick = vm::addLayer)
+            BarButton(AppIcons.Close, tr("Paneli kapat"), onClick = vm::toggleLayersPanel)
         }
         HorizontalDivider(color = AppColors.Divider)
         LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
@@ -93,7 +95,7 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
 
     renaming?.let { id ->
         val layer = doc.layers.firstOrNull { it.id == id }
-        if (layer == null) renaming = null else NameDialog("Katmanı adlandır", layer.name, onDismiss = { renaming = null }) { renaming = null; vm.renameLayer(id, it) }
+        if (layer == null) renaming = null else NameDialog(tr("Katmanı adlandır"), layer.name, onDismiss = { renaming = null }) { renaming = null; vm.renameLayer(id, it) }
     }
 }
 
@@ -122,11 +124,11 @@ private fun LayerRow(vm: EditorViewModel, row: PanelRow.OfLayer, onRename: () ->
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(if (active) AppColors.Accent else Color.Transparent))
-        SmallToggle(if (layer.visible) AppIcons.Visible else AppIcons.Hidden, "${layer.name} görünürlüğü", layer.visible) { vm.toggleLayerVisible(layer.id) }
-        SmallToggle(if (layer.locked) AppIcons.Lock else AppIcons.Unlock, "${layer.name} kilidi", layer.locked) { vm.toggleLayerLocked(layer.id) }
+        SmallToggle(if (layer.visible) AppIcons.Visible else AppIcons.Hidden, tr("%s görünürlüğü", trName(layer.name)), layer.visible) { vm.toggleLayerVisible(layer.id) }
+        SmallToggle(if (layer.locked) AppIcons.Lock else AppIcons.Unlock, tr("%s kilidi", trName(layer.name)), layer.locked) { vm.toggleLayerLocked(layer.id) }
         Box(
             Modifier.size(width = 28.dp, height = 40.dp).clickable(role = Role.Button) { vm.toggleExpanded(layer.id) }
-                .semantics { contentDescription = "${layer.name} içeriği"; selected = open },
+                .semantics { contentDescription = tr("%s içeriği", trName(layer.name)); selected = open },
             contentAlignment = Alignment.Center,
         ) {
             Icon(if (open) AppIcons.ExpandMore else AppIcons.ChevronRight, null, Modifier.size(20.dp), tint = AppColors.OnPanelMuted)
@@ -140,12 +142,12 @@ private fun LayerRow(vm: EditorViewModel, row: PanelRow.OfLayer, onRename: () ->
                 .padding(horizontal = 4.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
         ) {
-            Text(layer.name, color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${layer.children.size} nesne", color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            Text(trName(layer.name), color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(tr("%s nesne", layer.children.size), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
         Box {
             Box(
-                Modifier.size(40.dp).clickable(role = Role.Button) { menu = true }.semantics { contentDescription = "${layer.name} seçenekleri" },
+                Modifier.size(40.dp).clickable(role = Role.Button) { menu = true }.semantics { contentDescription = tr("%s seçenekleri", trName(layer.name)) },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(AppIcons.More, null, Modifier.size(20.dp), tint = AppColors.OnPanel)
@@ -154,11 +156,11 @@ private fun LayerRow(vm: EditorViewModel, row: PanelRow.OfLayer, onRename: () ->
                 @Composable
                 fun item(label: String, enabled: Boolean = true, action: () -> Unit) =
                     DropdownMenuItem(text = { Text(label) }, enabled = enabled, onClick = { menu = false; action() })
-                item("Yeniden adlandır", action = onRename)
-                item("Öne taşı", enabled = row.index < row.count - 1) { vm.moveLayer(layer.id, up = true) }
-                item("Arkaya taşı", enabled = row.index > 0) { vm.moveLayer(layer.id, up = false) }
-                item("Seçimi bu katmana taşı", enabled = state.selection.isNotEmpty()) { vm.moveSelectionToLayer(layer.id) }
-                item("Katmanı sil", enabled = row.count > 1) { vm.deleteLayer(layer.id) }
+                item(tr("Yeniden adlandır"), action = onRename)
+                item(tr("Öne taşı"), enabled = row.index < row.count - 1) { vm.moveLayer(layer.id, up = true) }
+                item(tr("Arkaya taşı"), enabled = row.index > 0) { vm.moveLayer(layer.id, up = false) }
+                item(tr("Seçimi bu katmana taşı"), enabled = state.selection.isNotEmpty()) { vm.moveSelectionToLayer(layer.id) }
+                item(tr("Katmanı sil"), enabled = row.count > 1) { vm.deleteLayer(layer.id) }
             }
         }
     }
@@ -169,12 +171,15 @@ private fun NodeRow(vm: EditorViewModel, row: PanelRow.OfNode) {
     val state = vm.state
     val node = row.node
     val isSelected = node.id in state.selection
-    val kind = when (node) {
+    // Tür adı kaynak dilde: düğümün varsayılan adı da bu dildedir, karşılaştırma onunla yapılır.
+    val kindKey = when (node) {
         is PathNode -> "Yol"
         is GroupNode -> if (node.clip != null) "Kırpma" else "Grup"
         is ImageNode -> "Görsel"
         is TextNode -> "Metin"
     }
+    val kind = tr(kindKey)
+    val unnamed = node.name == kindKey || node.name == "Kırpma grubu" || node.name.isBlank()
     Row(
         Modifier
             .fillMaxWidth()
@@ -183,8 +188,8 @@ private fun NodeRow(vm: EditorViewModel, row: PanelRow.OfNode) {
             .padding(start = (4 + minOf(row.depth, 6) * 14).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SmallToggle(if (node.visible) AppIcons.Visible else AppIcons.Hidden, "${node.name} görünürlüğü", node.visible) { vm.toggleNodeVisible(node.id) }
-        SmallToggle(if (node.locked) AppIcons.Lock else AppIcons.Unlock, "${node.name} kilidi", node.locked) { vm.toggleNodeLocked(node.id) }
+        SmallToggle(if (node.visible) AppIcons.Visible else AppIcons.Hidden, tr("%s görünürlüğü", trName(node.name)), node.visible) { vm.toggleNodeVisible(node.id) }
+        SmallToggle(if (node.locked) AppIcons.Lock else AppIcons.Unlock, tr("%s kilidi", trName(node.name)), node.locked) { vm.toggleNodeLocked(node.id) }
         if (node is GroupNode) {
             val open = node.id in state.expanded
             Box(Modifier.size(width = 28.dp, height = 40.dp).clickable(role = Role.Button) { vm.toggleExpanded(node.id) }, contentAlignment = Alignment.Center) {
@@ -198,7 +203,7 @@ private fun NodeRow(vm: EditorViewModel, row: PanelRow.OfNode) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (node.name == kind || node.name.isBlank()) kind else node.name,
+                if (unnamed) kind else trName(node.name),
                 Modifier.weight(1f),
                 color = AppColors.OnPanel,
                 style = MaterialTheme.typography.bodySmall,
@@ -206,7 +211,7 @@ private fun NodeRow(vm: EditorViewModel, row: PanelRow.OfNode) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (node is GroupNode) "${node.children.size}" else if (node.name == kind || node.name.isBlank()) "" else kind,
+                if (node is GroupNode) "${node.children.size}" else if (unnamed) "" else kind,
                 Modifier.padding(horizontal = 10.dp),
                 color = AppColors.OnPanelMuted,
                 style = MaterialTheme.typography.labelSmall,

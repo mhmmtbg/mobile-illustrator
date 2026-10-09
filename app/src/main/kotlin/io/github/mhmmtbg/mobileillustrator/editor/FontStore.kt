@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import android.graphics.Typeface
 import java.io.File
 import java.io.IOException
@@ -30,8 +31,8 @@ class FontStore(root: File) {
     @Synchronized
     fun add(fileName: String, bytes: ByteArray): String {
         val ext = fileName.substringAfterLast('.', "").lowercase()
-        if (ext !in Extensions) throw IOException("Yalnızca .ttf ve .otf font dosyaları yüklenebilir")
-        if (bytes.size > 40 * 1024 * 1024) throw IOException("Font dosyası çok büyük")
+        if (ext !in Extensions) throw IOException(tr("Yalnızca .ttf ve .otf font dosyaları yüklenebilir"))
+        if (bytes.size > 40 * 1024 * 1024) throw IOException(tr("Font dosyası çok büyük"))
         val name = fileName.substringBeforeLast('.').replace(Regex("[^\\p{L}\\p{N} _-]"), "_").trim().ifEmpty { "Font" }.take(60)
         dir.mkdirs()
         val target = File(dir, "$name.$ext")
@@ -40,7 +41,7 @@ class FontStore(root: File) {
         val ok = try { Typeface.createFromFile(target) != null } catch (e: RuntimeException) { false }
         if (!ok) {
             target.delete()
-            throw IOException("Bu dosya geçerli bir font değil")
+            throw IOException(tr("Bu dosya geçerli bir font değil"))
         }
         cache.remove(name)
         return name

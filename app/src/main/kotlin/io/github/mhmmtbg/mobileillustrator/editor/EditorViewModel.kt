@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -156,13 +157,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         state = state.copy(crashReport = null)
     }
 
-    fun importFont(uri: Uri) = background("Font yükleniyor…") {
+    fun importFont(uri: Uri) = background(tr("Font yükleniyor…")) {
         val name = io.importFont(uri)
         val list = io.fonts.list()
         withContext(Dispatchers.Main) {
             fonts = list
             // Açık metin penceresi varsa yeni font seçili gelsin.
-            state = state.copy(textPrompt = state.textPrompt?.copy(fontFamily = DocumentRenderer.CUSTOM_FONT_PREFIX + name), message = "\"$name\" yüklendi")
+            state = state.copy(textPrompt = state.textPrompt?.copy(fontFamily = DocumentRenderer.CUSTOM_FONT_PREFIX + name), message = tr("\"%s\" yüklendi", name))
         }
     }
 
@@ -402,7 +403,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             Tool.Text -> return Drag.Pan(startScreen)
             Tool.Pencil, Tool.Rectangle, Tool.Ellipse, Tool.Line -> {
                 val layer = drawingLayer() ?: run {
-                    state = state.copy(message = "Etkin katman kilitli ya da gizli")
+                    state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
                     return Drag.Pan(startScreen)
                 }
                 if (state.tool == Tool.Pencil) return Drag.Pencil(arrayListOf(start), newId(), layer.id)
@@ -439,7 +440,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleSnapping() {
-        state = state.copy(snapping = !state.snapping, message = if (state.snapping) "Yakalama kapalı" else "Yakalama açık")
+        state = state.copy(snapping = !state.snapping, message = if (state.snapping) tr("Yakalama kapalı") else tr("Yakalama açık"))
     }
 
     private fun drawingLayer(): Layer? {
@@ -503,17 +504,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         return when (s.tool) {
             Tool.Line -> PathNode(
                 id = d.nodeId,
-                name = "Çizgi",
+                name = tr("Çizgi"),
                 subpaths = listOf(Shapes.line(d.start, now)),
                 stroke = styledStroke(s.stroke ?: Rgba.Black),
                 opacity = s.opacity,
             )
             Tool.Ellipse -> PathNode(
-                id = d.nodeId, name = "Elips", subpaths = listOf(Shapes.ellipse(Rect.of(d.start, now))),
+                id = d.nodeId, name = tr("Elips"), subpaths = listOf(Shapes.ellipse(Rect.of(d.start, now))),
                 fill = fill, stroke = stroke, opacity = s.opacity,
             )
             else -> PathNode(
-                id = d.nodeId, name = "Dikdörtgen", subpaths = listOf(Shapes.rect(Rect.of(d.start, now))),
+                id = d.nodeId, name = tr("Dikdörtgen"), subpaths = listOf(Shapes.rect(Rect.of(d.start, now))),
                 fill = fill, stroke = stroke, opacity = s.opacity,
             )
         }
@@ -534,7 +535,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val pen = state.pen
         if (pen == null) {
             val layer = drawingLayer() ?: run {
-                state = state.copy(message = "Etkin katman kilitli ya da gizli")
+                state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
                 return
             }
             state = state.copy(selection = emptySet(), nodeEdit = null)
@@ -731,7 +732,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun groupSelection() {
         val (doc, id) = present.group(state.selection) ?: run {
-            state = state.copy(message = "Gruplamak için en az iki nesne seçin")
+            state = state.copy(message = tr("Gruplamak için en az iki nesne seçin"))
             return
         }
         commit(doc) { it.withSelection(setOf(id)) }
@@ -813,7 +814,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** Seçimin dolgusuna (ya da kontur hedefi etkinse konturuna) gradyan uygular; her nesne kendi kutusuna göre boyanır. */
     fun applyGradient(spec: GradientSpec) {
         if (state.selection.isEmpty()) {
-            state = state.copy(message = "Gradyan için önce bir nesne seçin")
+            state = state.copy(message = tr("Gradyan için önce bir nesne seçin"))
             return
         }
         val toStroke = state.paintTarget == PaintTarget.Stroke
@@ -832,7 +833,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private fun eyedrop(p: Vec2) {
         val hit = present.hitTestDeep(p, tolerance()) ?: return
         val sample = hit.styleSample() ?: run {
-            state = state.copy(message = "Bu nesneden stil alınamaz")
+            state = state.copy(message = tr("Bu nesneden stil alınamaz"))
             return
         }
         val fill = sample.first
@@ -847,7 +848,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 strokeCap = stroke?.cap ?: state.strokeCap,
                 strokeJoin = stroke?.join ?: state.strokeJoin,
                 opacity = hit.opacity,
-                message = "Stil alındı",
+                message = tr("Stil alındı"),
             )
             return
         }
@@ -859,7 +860,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 out.withOpacity(hit.opacity)
             }
         }
-        commit(doc) { it.copy(message = "Stil uygulandı") }
+        commit(doc) { it.copy(message = tr("Stil uygulandı")) }
     }
 
     // ---- Düzenleme: hizalama, Pathfinder, maske, sayısal dönüşüm --------------------------
@@ -877,7 +878,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun distributeSelection(horizontal: Boolean) {
         if (state.selection.size < 3) {
-            state = state.copy(message = "Dağıtmak için en az üç nesne seçin")
+            state = state.copy(message = tr("Dağıtmak için en az üç nesne seçin"))
             return
         }
         commit(present.distribute(state.selection, horizontal))
@@ -885,7 +886,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun makeClippingMask() {
         val (doc, id) = present.makeClippingMask(state.selection) ?: run {
-            state = state.copy(message = "Maske için en üstte bir yol ve altında en az bir nesne seçin")
+            state = state.copy(message = tr("Maske için en üstte bir yol ve altında en az bir nesne seçin"))
             return
         }
         commit(doc) { it.withSelection(setOf(id)) }
@@ -902,7 +903,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val ordered = present.layers.flatMap { it.children }.filter { it.id in state.selection }
         val paths = ordered.filterIsInstance<PathNode>()
         if (paths.size < 2 || paths.size != ordered.size) {
-            state = state.copy(message = "Bu işlem için en az iki yol seçin (metni önce yola çevirin, grubu çözün)")
+            state = state.copy(message = tr("Bu işlem için en az iki yol seçin (metni önce yola çevirin, grubu çözün)"))
             return
         }
         val result = try {
@@ -911,7 +912,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             null
         }
         if (result == null) {
-            state = state.copy(message = "Şekiller birleştirilemedi")
+            state = state.copy(message = tr("Şekiller birleştirilemedi"))
             return
         }
         // Illustrator'daki gibi: çıkarmada alttaki nesnenin, diğerlerinde en üstteki nesnenin görünümü kalır.
@@ -919,7 +920,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         var doc = present
         for (n in paths) if (n.id != styleFrom.id) doc = doc.removeNode(n.id)
         if (result.subpaths.isEmpty()) {
-            commit(doc.removeNode(styleFrom.id)) { it.copy(selection = emptySet(), nodeEdit = null, message = "Sonuç boş: şekiller kesişmiyor") }
+            commit(doc.removeNode(styleFrom.id)) { it.copy(selection = emptySet(), nodeEdit = null, message = tr("Sonuç boş: şekiller kesişmiyor")) }
             return
         }
         val m = styleFrom.transform
@@ -1005,7 +1006,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteLayer(id: String) {
         if (present.layers.size <= 1) {
-            state = state.copy(message = "Son katman silinemez")
+            state = state.copy(message = tr("Son katman silinemez"))
             return
         }
         val doc = present.removeLayer(id)
@@ -1097,7 +1098,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             emptyList()
         }
         if (shapes.isEmpty()) {
-            state = state.copy(message = "Bu metin yola çevrilemedi")
+            state = state.copy(message = tr("Bu metin yola çevrilemedi"))
             return
         }
         val path = PathNode(
@@ -1131,7 +1132,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val layer = drawingLayer() ?: run {
-            state = state.copy(message = "Etkin katman kilitli ya da gizli")
+            state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
             return
         }
         val node = TextNode(
@@ -1176,17 +1177,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newDocument(width: Double, height: Double) {
         if (state.pen != null) finishPen()
-        background("Hazırlanıyor…") {
+        background(tr("Hazırlanıyor…")) {
             persistNow()
             withContext(Dispatchers.Main) {
-                load(Document.blank(width.coerceIn(1.0, 20000.0), height.coerceIn(1.0, 20000.0)), emptyList(), DocSession(io.store.newId()), stored = false)
+                load(Document.blank(width.coerceIn(1.0, 20000.0), height.coerceIn(1.0, 20000.0), tr("Adsız")), emptyList(), DocSession(io.store.newId()), stored = false)
             }
         }
     }
 
     fun open(uri: Uri) {
         if (state.pen != null) finishPen()
-        background("Açılıyor…") {
+        background(tr("Açılıyor…")) {
             val opened = io.open(uri)
             io.persistAccess(uri)
             persistNow()
@@ -1203,7 +1204,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openSample() {
         if (state.pen != null) finishPen()
-        background("Açılıyor…") {
+        background(tr("Açılıyor…")) {
             val opened = io.openAsset("samples/gopher.ai", "Gopher")
             persistNow()
             withContext(Dispatchers.Main) { load(opened.result.document, opened.result.warnings, DocSession(io.store.newId()), stored = false) }
@@ -1214,7 +1215,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun showGallery() {
         if (state.pen != null) finishPen()
-        background("Belgeler yükleniyor…") {
+        background(tr("Belgeler yükleniyor…")) {
             persistNow()
             val list = io.store.list()
             withContext(Dispatchers.Main) { state = state.copy(gallery = list) }
@@ -1230,9 +1231,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             hideGallery()
             return
         }
-        background("Açılıyor…") {
+        background(tr("Açılıyor…")) {
             persistNow()
-            val meta = io.store.read(id) ?: throw java.io.IOException("Belge bulunamadı")
+            val meta = io.store.read(id) ?: throw java.io.IOException(tr("Belge bulunamadı"))
             val doc = io.loadFromStore(id)
             io.store.setCurrent(id)
             withContext(Dispatchers.Main) {
@@ -1241,7 +1242,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun deleteStored(id: String) = background("Siliniyor…") {
+    fun deleteStored(id: String) = background(tr("Siliniyor…")) {
         val wasCurrent = id == state.session.id
         if (wasCurrent) autosaveJob?.cancel()
         io.store.delete(id)
@@ -1260,14 +1261,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val format = state.session.linkFormat ?: ExportFormat.Ai
         if (state.pen != null) finishPen()
         val doc = present
-        background("Kaydediliyor…") {
+        background(tr("Kaydediliyor…")) {
             try {
                 io.export(doc, Uri.parse(link), format)
             } catch (e: java.io.IOException) {
-                throw java.io.IOException("${e.message}. \"Farklı kaydet\" ile yeni bir dosyaya kaydedin.")
+                throw java.io.IOException(tr("%s. \"Farklı kaydet\" ile yeni bir dosyaya kaydedin.", e.message))
             }
             withContext(Dispatchers.Main) {
-                state = state.copy(session = state.session.copy(unsaved = present !== doc), message = "Kaydedildi")
+                state = state.copy(session = state.session.copy(unsaved = present !== doc), message = tr("Kaydedildi"))
             }
             persistMeta()
         }
@@ -1277,13 +1278,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun saveAs(uri: Uri) {
         if (state.pen != null) finishPen()
         val doc = present
-        background("Kaydediliyor…") {
+        background(tr("Kaydediliyor…")) {
             io.export(doc, uri, ExportFormat.Ai)
             io.persistAccess(uri)
             withContext(Dispatchers.Main) {
                 state = state.copy(
                     session = state.session.copy(linkUri = uri.toString(), linkFormat = ExportFormat.Ai, linkWritable = true, unsaved = present !== doc),
-                    message = "Kaydedildi",
+                    message = tr("Kaydedildi"),
                 )
             }
             persistNow()
@@ -1295,17 +1296,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun export(uri: Uri, format: ExportFormat) {
         if (state.pen != null) finishPen()
         val doc = present
-        background("Dışa aktarılıyor…") {
+        background(tr("Dışa aktarılıyor…")) {
             io.export(doc, uri, format)
-            withContext(Dispatchers.Main) { state = state.copy(message = "Dışa aktarıldı") }
+            withContext(Dispatchers.Main) { state = state.copy(message = tr("Dışa aktarıldı")) }
         }
     }
 
-    fun placeImage(uri: Uri) = background("Görsel ekleniyor…") {
+    fun placeImage(uri: Uri) = background(tr("Görsel ekleniyor…")) {
         val image = io.readImage(uri)
         withContext(Dispatchers.Main) {
             val layer = drawingLayer() ?: run {
-                state = state.copy(message = "Etkin katman kilitli ya da gizli")
+                state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
                 return@withContext
             }
             // Görsel, görünen alanın ortasına ve yarısını kaplayacak boyda yerleşir.
@@ -1327,7 +1328,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 withContext(Dispatchers.Default) { block() }
             } catch (e: Throwable) {
-                state = state.copy(message = e.message?.takeIf { it.isNotBlank() } ?: "İşlem başarısız oldu")
+                state = state.copy(message = e.message?.takeIf { it.isNotBlank() } ?: tr("İşlem başarısız oldu"))
             } finally {
                 state = state.copy(busy = null)
             }
@@ -1382,7 +1383,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private class Restored(val meta: StoredDocument?, val document: Document?, val others: List<StoredDocument>?)
 
     private fun restoreLastDocument() {
-        state = state.copy(busy = "Son çalışma açılıyor…")
+        state = state.copy(busy = tr("Son çalışma açılıyor…"))
         viewModelScope.launch {
             val restored = withContext(Dispatchers.Default) {
                 try {

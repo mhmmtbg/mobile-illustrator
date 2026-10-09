@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
@@ -29,7 +30,7 @@ class DocumentIo(private val app: Application) {
 
     /** Seçilen font dosyasını uygulamaya yükler; fontun adını döndürür. */
     fun importFont(uri: Uri): String {
-        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException("Dosya açılamadı")
+        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException(tr("Dosya açılamadı"))
         return fonts.add(displayName(uri), bytes)
     }
 
@@ -42,17 +43,17 @@ class DocumentIo(private val app: Application) {
         val bytes = try {
             app.contentResolver.openInputStream(uri)?.use { it.readBytes() }
         } catch (e: SecurityException) {
-            throw IOException("Dosyaya erişim izni yok")
+            throw IOException(tr("Dosyaya erişim izni yok"))
         } catch (e: OutOfMemoryError) {
-            throw IOException("Dosya belleğe sığmayacak kadar büyük")
-        } ?: throw IOException("Dosya açılamadı")
+            throw IOException(tr("Dosya belleğe sığmayacak kadar büyük"))
+        } ?: throw IOException(tr("Dosya açılamadı"))
         return parse(bytes, name)
     }
 
     fun openAsset(path: String, name: String): Opened = parse(app.assets.open(path).use { it.readBytes() }, "$name.ai")
 
     private fun parse(bytes: ByteArray, fileName: String): Opened {
-        val base = fileName.substringBeforeLast('.').ifBlank { "Adsız" }
+        val base = fileName.substringBeforeLast('.').ifBlank { tr("Adsız") }
         val looksSvg = fileName.endsWith(".svg", ignoreCase = true) || SvgImporter.sniff(bytes)
         try {
             return if (looksSvg) {
@@ -63,9 +64,9 @@ class DocumentIo(private val app: Application) {
         } catch (e: ImportException) {
             throw IOException(e.message)
         } catch (e: OutOfMemoryError) {
-            throw IOException("Dosya belleğe sığmayacak kadar karmaşık")
+            throw IOException(tr("Dosya belleğe sığmayacak kadar karmaşık"))
         } catch (e: StackOverflowError) {
-            throw IOException("Dosya çok derin iç içe yapı içeriyor")
+            throw IOException(tr("Dosya çok derin iç içe yapı içeriyor"))
         }
     }
 
@@ -79,7 +80,7 @@ class DocumentIo(private val app: Application) {
                 // Bazı sağlayıcılar sorguyu desteklemez; yoldan türet.
             }
         }
-        return uri.lastPathSegment?.substringAfterLast('/') ?: "Adsız"
+        return uri.lastPathSegment?.substringAfterLast('/') ?: tr("Adsız")
     }
 
     /**
@@ -113,16 +114,16 @@ class DocumentIo(private val app: Application) {
         val out = try {
             app.contentResolver.openOutputStream(uri, "wt")
         } catch (e: SecurityException) {
-            throw IOException("Dosyaya yazma izni yok")
+            throw IOException(tr("Dosyaya yazma izni yok"))
         } catch (e: java.io.FileNotFoundException) {
-            throw IOException("Dosya artık yerinde değil")
-        } ?: throw IOException("Dosya yazılamadı")
+            throw IOException(tr("Dosya artık yerinde değil"))
+        } ?: throw IOException(tr("Dosya yazılamadı"))
         out.use { it.write(bytes) }
     }
 
     /** Çalışma yüzeylerini PNG olarak çizer; uzun kenar en çok [maxSide] piksel olur. */
     private fun renderPng(doc: Document, maxSide: Int, transparent: Boolean): ByteArray {
-        val box = doc.artboardBounds() ?: throw IOException("Çalışma yüzeyi yok")
+        val box = doc.artboardBounds() ?: throw IOException(tr("Çalışma yüzeyi yok"))
         val longest = maxOf(box.width, box.height)
         val scale = minOf(maxSide / longest, 4.0).coerceAtLeast(0.001)
         val w = (box.width * scale).toInt().coerceAtLeast(1)
@@ -130,7 +131,7 @@ class DocumentIo(private val app: Application) {
         val bmp = try {
             Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         } catch (e: OutOfMemoryError) {
-            throw IOException("Görsel için yeterli bellek yok")
+            throw IOException(tr("Görsel için yeterli bellek yok"))
         }
         val canvas = Canvas(bmp)
         canvas.scale(scale.toFloat(), scale.toFloat())
@@ -144,15 +145,15 @@ class DocumentIo(private val app: Application) {
 
     /** Galeriden seçilen görseli okur. JPEG olduğu gibi kalır; diğerleri PNG'ye çevrilir. */
     fun readImage(uri: Uri): ImageData {
-        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException("Görsel açılamadı")
+        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException(tr("Görsel açılamadı"))
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Bu dosya bir görsel değil")
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException(tr("Bu dosya bir görsel değil"))
         if (bounds.outMimeType == "image/jpeg") return ImageData(bytes, "image/jpeg", bounds.outWidth, bounds.outHeight)
         var sample = 1
         while (bounds.outWidth.toLong() * bounds.outHeight / (sample * sample) > 24_000_000L) sample *= 2
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
-            ?: throw IOException("Görsel çözülemedi")
+            ?: throw IOException(tr("Görsel çözülemedi"))
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
         val data = ImageData(out.toByteArray(), "image/png", bmp.width, bmp.height)
@@ -169,7 +170,7 @@ class DocumentIo(private val app: Application) {
     }
 
     fun loadFromStore(id: String): Document {
-        val meta = store.read(id) ?: throw IOException("Belge bulunamadı")
+        val meta = store.read(id) ?: throw IOException(tr("Belge bulunamadı"))
         try {
             return AiImporter.import(store.readData(id), meta.name).document
         } catch (e: ImportException) {

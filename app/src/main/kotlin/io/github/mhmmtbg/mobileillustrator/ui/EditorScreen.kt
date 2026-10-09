@@ -1,5 +1,9 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import io.github.mhmmtbg.mobileillustrator.model.trName
+import io.github.mhmmtbg.mobileillustrator.App
+import io.github.mhmmtbg.mobileillustrator.model.L10n
+import io.github.mhmmtbg.mobileillustrator.model.tr
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +90,7 @@ private val Swatches = listOf(
 
 private class ToolSpec(val tool: Tool, val icon: ImageVector, val label: String)
 
+/** Etiketler kaynak dildedir; gösterilirken çevrilir (dil değişince liste yeniden kurulmaz). */
 private val Tools = listOf(
     ToolSpec(Tool.Select, AppIcons.Select, "Seçim"),
     ToolSpec(Tool.Direct, AppIcons.Direct, "Doğrudan seçim"),
@@ -101,6 +106,7 @@ private val Tools = listOf(
 @Composable
 fun EditorScreen(vm: EditorViewModel) {
     val state = vm.state
+    val activity = LocalContext.current as android.app.Activity
     var exportFormat by rememberSaveable { mutableStateOf(ExportFormat.Ai) }
     var showNew by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
@@ -143,6 +149,10 @@ fun EditorScreen(vm: EditorViewModel) {
                 onSaveAs = ::saveAs,
                 onRename = { renamingDocument = true },
                 onExport = ::export,
+                onToggleLanguage = {
+                    App.setLanguage(activity.application, if (L10n.english) "tr" else "en")
+                    activity.recreate()
+                },
             )
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 if (rail) ToolRail(vm)
@@ -208,7 +218,7 @@ fun EditorScreen(vm: EditorViewModel) {
         }
     }
     if (renamingDocument) {
-        NameDialog("Belgeyi adlandır", state.history.present.name, onDismiss = { renamingDocument = false }) { renamingDocument = false; vm.renameDocument(it) }
+        NameDialog(tr("Belgeyi adlandır"), state.history.present.name, onDismiss = { renamingDocument = false }) { renamingDocument = false; vm.renameDocument(it) }
     }
     if (showNew) NewDocumentDialog(onDismiss = { showNew = false }) { w, h -> showNew = false; vm.newDocument(w, h) }
     if (showPicker) {
@@ -217,7 +227,7 @@ fun EditorScreen(vm: EditorViewModel) {
     }
     renaming?.let { id ->
         val node = state.history.present.findNode(id)
-        if (node == null) renaming = null else NameDialog("Yeniden adlandır", node.name, onDismiss = { renaming = null }) { renaming = null; vm.renameNode(id, it) }
+        if (node == null) renaming = null else NameDialog(tr("Yeniden adlandır"), node.name, onDismiss = { renaming = null }) { renaming = null; vm.renameNode(id, it) }
     }
     state.textPrompt?.let {
         TextDialog(it, vm.fonts, onLoadFont = { fontLauncher.launch(arrayOf("*/*")) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
@@ -228,8 +238,8 @@ fun EditorScreen(vm: EditorViewModel) {
         CrashDialog(
             onShare = {
                 vm.dismissCrashReport()
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Mobile Illustrator çökme raporu").putExtra(Intent.EXTRA_TEXT, report)
-                try { context.startActivity(Intent.createChooser(send, "Raporu paylaş")) } catch (e: Exception) { /* paylaşacak uygulama yok */ }
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, tr("Mobile Illustrator çökme raporu")).putExtra(Intent.EXTRA_TEXT, report)
+                try { context.startActivity(Intent.createChooser(send, tr("Raporu paylaş"))) } catch (e: Exception) { /* paylaşacak uygulama yok */ }
             },
             onDismiss = vm::dismissCrashReport,
         )
@@ -261,6 +271,7 @@ private fun TopBar(
     onSaveAs: () -> Unit,
     onRename: () -> Unit,
     onExport: (ExportFormat) -> Unit,
+    onToggleLanguage: () -> Unit,
 ) {
     val state = vm.state
     var menu by remember { mutableStateOf(false) }
@@ -272,32 +283,36 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            BarButton(AppIcons.Menu, "Dosya menüsü") { menu = true }
+            BarButton(AppIcons.Menu, tr("Dosya menüsü")) { menu = true }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 @Composable
                 fun item(label: String, action: () -> Unit) =
                     DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; action() })
-                item("Belgelerim") { vm.showGallery() }
-                item("Yeni belge…", onNew)
-                item("Aç… (.ai, .pdf, .svg)", onOpen)
-                item("Örnek dosyayı aç") { vm.openSample() }
+                item(tr("Belgelerim")) { vm.showGallery() }
+                item(tr("Yeni belge…"), onNew)
+                item(tr("Aç… (.ai, .pdf, .svg)"), onOpen)
+                item(tr("Örnek dosyayı aç")) { vm.openSample() }
                 HorizontalDivider()
-                item("Kaydet", onSave)
-                item("Farklı kaydet (.ai)", onSaveAs)
-                item("PDF dışa aktar") { onExport(ExportFormat.Pdf) }
-                item("SVG dışa aktar") { onExport(ExportFormat.Svg) }
-                item("PNG dışa aktar") { onExport(ExportFormat.Png) }
+                item(tr("Kaydet"), onSave)
+                item(tr("Farklı kaydet (.ai)"), onSaveAs)
+                item(tr("PDF dışa aktar")) { onExport(ExportFormat.Pdf) }
+                item(tr("SVG dışa aktar")) { onExport(ExportFormat.Svg) }
+                item(tr("PNG dışa aktar")) { onExport(ExportFormat.Png) }
                 HorizontalDivider()
-                item("Görsel yerleştir…", onPlaceImage)
-                item("Belgeyi adlandır…", onRename)
-                item("Tümünü seç") { vm.selectAll() }
-                item(if (state.snapping) "Yakalama: açık" else "Yakalama: kapalı") { vm.toggleSnapping() }
+                item(tr("Görsel yerleştir…"), onPlaceImage)
+                item(tr("Belgeyi adlandır…"), onRename)
+                item(tr("Tümünü seç")) { vm.selectAll() }
+                item(if (state.snapping) tr("Yakalama: açık") else tr("Yakalama: kapalı")) { vm.toggleSnapping() }
+                // Dil değiştirme: seçim kaydedilir ve ekran yeni dille yeniden kurulur.
+                item(tr("Dil: Türkçe")) { onToggleLanguage() }
             }
         }
         // Bağlı dosyaya yazılmamış değişiklik varsa adın başında nokta görünür.
         Text(
-            (if (state.session.unsaved) "● " else "") + state.document.name,
-            Modifier.padding(start = 4.dp).weight(1f).semantics { contentDescription = "Belge adı: " + state.document.name + if (state.session.unsaved) ", kaydedilmedi" else "" },
+            (if (state.session.unsaved) "● " else "") + trName(state.document.name),
+            Modifier.padding(start = 4.dp).weight(1f).semantics {
+                contentDescription = tr(if (state.session.unsaved) "Belge adı: %s, kaydedilmedi" else "Belge adı: %s", trName(state.document.name))
+            },
             style = MaterialTheme.typography.titleSmall,
             color = AppColors.OnPanel,
             maxLines = 1,
@@ -309,10 +324,10 @@ private fun TopBar(
             style = MaterialTheme.typography.labelMedium,
             color = AppColors.OnPanelMuted,
         )
-        BarButton(AppIcons.Fit, "Ekrana sığdır", onClick = vm::fitToScreen)
-        BarButton(AppIcons.Undo, "Geri al", enabled = state.history.canUndo || state.pen != null, onClick = vm::undo)
-        BarButton(AppIcons.Redo, "Yinele", enabled = state.history.canRedo && state.pen == null, onClick = vm::redo)
-        BarButton(AppIcons.Layers, "Katmanlar", active = state.layersOpen, onClick = vm::toggleLayersPanel)
+        BarButton(AppIcons.Fit, tr("Ekrana sığdır"), onClick = vm::fitToScreen)
+        BarButton(AppIcons.Undo, tr("Geri al"), enabled = state.history.canUndo || state.pen != null, onClick = vm::undo)
+        BarButton(AppIcons.Redo, tr("Yinele"), enabled = state.history.canRedo && state.pen == null, onClick = vm::redo)
+        BarButton(AppIcons.Layers, tr("Katmanlar"), active = state.layersOpen, onClick = vm::toggleLayersPanel)
     }
 }
 
@@ -344,57 +359,57 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransf
     val edit = state.nodeEdit
     when {
         state.pen != null -> {
-            actions += "Bitir" to { vm.finishPen(close = false) }
-            if (state.pen.anchors.size >= 3) actions += "Kapat ve bitir" to { vm.finishPen(close = true) }
-            actions += "İptal" to vm::cancelPen
+            actions += tr("Bitir") to { vm.finishPen(close = false) }
+            if (state.pen.anchors.size >= 3) actions += tr("Kapat ve bitir") to { vm.finishPen(close = true) }
+            actions += tr("İptal") to vm::cancelPen
         }
         state.tool == Tool.Direct && edit?.anchor != null -> {
             val anchor = (doc.findNode(edit.nodeId) as? PathNode)?.subpaths?.anchorAt(edit.anchor)
             val curved = anchor != null && (anchor.handleIn != null || anchor.handleOut != null)
-            actions += (if (curved) "Köşeye çevir" else "Yumuşat") to vm::toggleSmoothAnchor
-            actions += "Düğümü sil" to vm::deleteSelection
+            actions += (if (curved) tr("Köşeye çevir") else tr("Yumuşat")) to vm::toggleSmoothAnchor
+            actions += tr("Düğümü sil") to vm::deleteSelection
         }
         state.selection.isNotEmpty() && mode == 1 -> {
-            actions += "‹ Geri" to { mode = 0 }
-            actions += "Sola" to { vm.alignSelection(Align.Left) }
-            actions += "Yatay ortala" to { vm.alignSelection(Align.CenterH) }
-            actions += "Sağa" to { vm.alignSelection(Align.Right) }
-            actions += "Üste" to { vm.alignSelection(Align.Top) }
-            actions += "Dikey ortala" to { vm.alignSelection(Align.CenterV) }
-            actions += "Alta" to { vm.alignSelection(Align.Bottom) }
+            actions += tr("‹ Geri") to { mode = 0 }
+            actions += tr("Sola") to { vm.alignSelection(Align.Left) }
+            actions += tr("Yatay ortala") to { vm.alignSelection(Align.CenterH) }
+            actions += tr("Sağa") to { vm.alignSelection(Align.Right) }
+            actions += tr("Üste") to { vm.alignSelection(Align.Top) }
+            actions += tr("Dikey ortala") to { vm.alignSelection(Align.CenterV) }
+            actions += tr("Alta") to { vm.alignSelection(Align.Bottom) }
             if (state.selection.size >= 3) {
-                actions += "Yatay dağıt" to { vm.distributeSelection(true) }
-                actions += "Dikey dağıt" to { vm.distributeSelection(false) }
+                actions += tr("Yatay dağıt") to { vm.distributeSelection(true) }
+                actions += tr("Dikey dağıt") to { vm.distributeSelection(false) }
             }
         }
         state.selection.isNotEmpty() && mode == 2 -> {
-            actions += "‹ Geri" to { mode = 0 }
-            actions += "Birleştir" to { mode = 0; vm.pathfinder(BooleanOp.Unite) }
-            actions += "Öndekini çıkar" to { mode = 0; vm.pathfinder(BooleanOp.MinusFront) }
-            actions += "Kesiştir" to { mode = 0; vm.pathfinder(BooleanOp.Intersect) }
-            actions += "Dışla" to { mode = 0; vm.pathfinder(BooleanOp.Exclude) }
-            actions += "Maske yap" to { mode = 0; vm.makeClippingMask() }
+            actions += tr("‹ Geri") to { mode = 0 }
+            actions += tr("Birleştir") to { mode = 0; vm.pathfinder(BooleanOp.Unite) }
+            actions += tr("Öndekini çıkar") to { mode = 0; vm.pathfinder(BooleanOp.MinusFront) }
+            actions += tr("Kesiştir") to { mode = 0; vm.pathfinder(BooleanOp.Intersect) }
+            actions += tr("Dışla") to { mode = 0; vm.pathfinder(BooleanOp.Exclude) }
+            actions += tr("Maske yap") to { mode = 0; vm.makeClippingMask() }
         }
         state.selection.isNotEmpty() -> {
             val nodes = state.selection.mapNotNull { doc.findNode(it) }
             val single = nodes.singleOrNull()
-            actions += "Hizala" to { mode = 1 }
-            if (nodes.size >= 2) actions += "Şekil" to { mode = 2 }
-            actions += "Dönüştür" to onTransform
-            if (single is GroupNode && single.clip != null) actions += "Maskeyi bırak" to vm::releaseClippingMask
+            actions += tr("Hizala") to { mode = 1 }
+            if (nodes.size >= 2) actions += tr("Şekil") to { mode = 2 }
+            actions += tr("Dönüştür") to onTransform
+            if (single is GroupNode && single.clip != null) actions += tr("Maskeyi bırak") to vm::releaseClippingMask
             if (single is TextNode) {
-                actions += "Metni düzenle" to vm::editSelectedText
-                actions += "Yola çevir" to vm::outlineSelectedText
+                actions += tr("Metni düzenle") to vm::editSelectedText
+                actions += tr("Yola çevir") to vm::outlineSelectedText
             }
-            actions += "Çoğalt" to vm::duplicateSelection
-            if (nodes.size >= 2) actions += "Grupla" to vm::groupSelection
-            if (nodes.any { it is GroupNode }) actions += "Grubu çöz" to vm::ungroupSelection
-            actions += "Öne" to { vm.reorderSelection(ZMove.Forward) }
-            actions += "Arkaya" to { vm.reorderSelection(ZMove.Backward) }
-            actions += "En öne" to { vm.reorderSelection(ZMove.Front) }
-            actions += "En arkaya" to { vm.reorderSelection(ZMove.Back) }
-            if (single != null) actions += "Adlandır" to { onRename(single.id) }
-            actions += "Sil" to vm::deleteSelection
+            actions += tr("Çoğalt") to vm::duplicateSelection
+            if (nodes.size >= 2) actions += tr("Grupla") to vm::groupSelection
+            if (nodes.any { it is GroupNode }) actions += tr("Grubu çöz") to vm::ungroupSelection
+            actions += tr("Öne") to { vm.reorderSelection(ZMove.Forward) }
+            actions += tr("Arkaya") to { vm.reorderSelection(ZMove.Backward) }
+            actions += tr("En öne") to { vm.reorderSelection(ZMove.Front) }
+            actions += tr("En arkaya") to { vm.reorderSelection(ZMove.Back) }
+            if (single != null) actions += tr("Adlandır") to { onRename(single.id) }
+            actions += tr("Sil") to vm::deleteSelection
         }
     }
     if (actions.isEmpty()) return
@@ -415,7 +430,7 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransf
                     .background(AppColors.PanelRaised)
                     .clickable(role = Role.Button, onClick = action)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
-                color = if (label == "Sil" || label == "Düğümü sil") Color(0xFFFF8A8A) else AppColors.OnPanel,
+                color = if (label == tr("Sil") || label == tr("Düğümü sil")) Color(0xFFFF8A8A) else AppColors.OnPanel,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
             )
@@ -429,19 +444,19 @@ private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit, onGradient:
     Column {
         if (state.paintTarget == PaintTarget.Stroke && state.stroke != null) {
             SliderRow(
-                label = "Kontur kalınlığı",
+                label = tr("Kontur kalınlığı"),
                 valueText = "${formatWidth(state.strokeWidth)} pt",
                 value = state.strokeWidth.toFloat(),
                 range = 0.25f..80f,
                 onChange = { vm.setStrokeWidth(snapWidth(it), done = false) },
                 onDone = { vm.setStrokeWidth(vm.state.strokeWidth, done = true) },
-                trailing = "Seçenekler" to onStrokeOptions,
+                trailing = tr("Seçenekler") to onStrokeOptions,
             )
         }
         Row(Modifier.padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            PaintTargetChip("Dolgu", state.fill, state.paintTarget == PaintTarget.Fill) { vm.selectPaintTarget(PaintTarget.Fill) }
+            PaintTargetChip(tr("Dolgu"), state.fill, state.paintTarget == PaintTarget.Fill) { vm.selectPaintTarget(PaintTarget.Fill) }
             Spacer(Modifier.width(4.dp))
-            PaintTargetChip("Kontur", state.stroke, state.paintTarget == PaintTarget.Stroke) { vm.selectPaintTarget(PaintTarget.Stroke) }
+            PaintTargetChip(tr("Kontur"), state.stroke, state.paintTarget == PaintTarget.Stroke) { vm.selectPaintTarget(PaintTarget.Stroke) }
             Spacer(Modifier.width(4.dp))
             OpacityChip(state, state.paintTarget == PaintTarget.Opacity) { vm.selectPaintTarget(PaintTarget.Opacity) }
             Spacer(Modifier.width(6.dp))
@@ -451,7 +466,7 @@ private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit, onGradient:
                     onValueChange = { vm.setOpacity((it * 100).roundToInt() / 100.0, done = false) },
                     onValueChangeFinished = { vm.setOpacity(vm.state.opacity, done = true) },
                     valueRange = 0f..1f,
-                    modifier = Modifier.weight(1f).padding(end = 16.dp).semantics { contentDescription = "Opaklık" },
+                    modifier = Modifier.weight(1f).padding(end = 16.dp).semantics { contentDescription = tr("Opaklık") },
                 )
             } else {
                 val current = if (state.paintTarget == PaintTarget.Fill) state.fill else state.stroke
@@ -459,19 +474,19 @@ private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit, onGradient:
                     Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    SwatchButton(null, current == null, "Renk yok") { vm.setColor(null) }
+                    SwatchButton(null, current == null, tr("Renk yok")) { vm.setColor(null) }
                     Box(
                         Modifier
                             .size(44.dp)
                             .clip(CircleShape)
                             .clickable(role = Role.Button, onClick = onCustomColor)
-                            .semantics { contentDescription = "Özel renk" },
+                            .semantics { contentDescription = tr("Özel renk") },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(AppIcons.Add, null, Modifier.size(26.dp).border(1.5.dp, AppColors.OnPanelMuted, CircleShape).padding(3.dp), tint = AppColors.OnPanel)
                     }
                     Text(
-                        "Gradyan",
+                        tr("Gradyan"),
                         Modifier
                             .padding(horizontal = 4.dp)
                             .clip(RoundedCornerShape(8.dp))
@@ -562,7 +577,7 @@ private fun ToolButton(spec: ToolSpec, active: Boolean, modifier: Modifier, onCl
             .clip(RoundedCornerShape(10.dp))
             .background(if (active) AppColors.Accent else Color.Transparent)
             .clickable(role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = spec.label; selected = active },
+            .semantics { contentDescription = tr(spec.label); selected = active },
         contentAlignment = Alignment.Center,
     ) {
         Icon(spec.icon, contentDescription = null, tint = if (active) Color(0xFF2B1A0E) else AppColors.OnPanel)
@@ -597,7 +612,7 @@ private fun OpacityChip(state: EditorState, active: Boolean, onClick: () -> Unit
             .background(if (active) AppColors.PanelRaised else Color.Transparent)
             .border(1.dp, if (active) AppColors.Accent else Color.Transparent, RoundedCornerShape(10.dp))
             .clickable(role = Role.Tab, onClick = onClick)
-            .semantics { contentDescription = "Opaklık ayarı"; selected = active }
+            .semantics { contentDescription = tr("Opaklık ayarı"); selected = active }
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
