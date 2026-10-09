@@ -104,10 +104,11 @@ private fun TopBar(vm: EditorViewModel) {
 
 @Composable
 private fun BarButton(icon: ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled) {
+    // Etiket düğmenin kendisinde durur ki erişilebilirlik servisleri etkin/pasif durumunu doğru okusun.
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) {
         Icon(
             icon,
-            contentDescription = label,
+            contentDescription = null,
             tint = if (enabled) AppColors.OnPanel else AppColors.OnPanelMuted.copy(alpha = 0.4f),
         )
     }
@@ -185,10 +186,10 @@ private fun ToolButton(icon: ImageVector, label: String, active: Boolean, onClic
             .clip(RoundedCornerShape(10.dp))
             .background(if (active) AppColors.Accent else Color.Transparent)
             .clickable(role = Role.Tab, onClick = onClick)
-            .semantics { selected = active },
+            .semantics { contentDescription = label; selected = active },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = if (active) Color(0xFF2B1A0E) else AppColors.OnPanel)
+        Icon(icon, contentDescription = null, tint = if (active) Color(0xFF2B1A0E) else AppColors.OnPanel)
     }
 }
 
