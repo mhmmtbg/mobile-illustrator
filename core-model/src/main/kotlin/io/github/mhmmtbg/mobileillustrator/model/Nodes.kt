@@ -159,3 +159,12 @@ fun Document.removeNode(nodeId: String): Document = updateNode(nodeId) { null }
 /** Düğümü katmanın en üstüne ekler. */
 fun Document.addNode(layerId: String, node: Node): Document =
     updateLayer(layerId) { it.copy(children = it.children + node) }
+
+/** Düğümün (grupsa içindeki tüm yolların) stilini değiştirir. */
+fun Node.mapPaths(f: (PathNode) -> PathNode): Node = when (this) {
+    is PathNode -> f(this)
+    is GroupNode -> copy(children = children.map { it.mapPaths(f) })
+}
+
+/** Tüm çalışma yüzeylerini kapsayan kutu. */
+fun Document.artboardBounds(): Rect? = artboards.map { it.bounds }.reduceOrNull(Rect::union)
