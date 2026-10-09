@@ -235,12 +235,12 @@ class DocumentRenderer {
         if (fill != null) {
             textPaint.style = AndroidPaint.Style.FILL
             applyPaint(textPaint, fill, node.opacity)
-            canvas.drawText(node.text, 0f, 0f, textPaint)
+            forEachLine(node, textPaint) { line, x, y -> canvas.drawText(line, x, y, textPaint) }
         }
         if (stroke != null) {
             textPaint.style = AndroidPaint.Style.STROKE
             applyStroke(textPaint, stroke, node.opacity)
-            canvas.drawText(node.text, 0f, 0f, textPaint)
+            forEachLine(node, textPaint) { line, x, y -> canvas.drawText(line, x, y, textPaint) }
             textPaint.pathEffect = null
         }
     }
@@ -378,6 +378,23 @@ class DocumentRenderer {
                 else -> Typeface.NORMAL
             }
             return Typeface.create(base, style)
+        }
+
+        /**
+         * Metnin her satırını, yerel uzaydaki başlangıç noktasıyla verir. Tek satırlı metinde (0,0)'dır;
+         * çok satırlıda satırlar aşağı doğru dizilir ve hizalamaya göre yatay kayar.
+         */
+        inline fun forEachLine(node: TextNode, paint: AndroidPaint, action: (line: String, x: Float, y: Float) -> Unit) {
+            if (node.text.indexOf('\n') < 0) {
+                action(node.text, 0f, 0f)
+                return
+            }
+            val step = (node.fontSize * 1.2).toFloat()
+            var y = 0f
+            for (line in node.text.split('\n')) {
+                action(line, 0f, y)
+                y += step
+            }
         }
 
         /** Yazı tipini, boyutu ve (biliniyorsa) özgün genişliğe uyacak yatay ölçeği ayarlar. */

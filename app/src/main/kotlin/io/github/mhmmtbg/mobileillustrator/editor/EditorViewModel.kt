@@ -9,7 +9,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.mhmmtbg.mobileillustrator.model.Align
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
+import io.github.mhmmtbg.mobileillustrator.model.GradientSpec
+import io.github.mhmmtbg.mobileillustrator.model.Snap
+import io.github.mhmmtbg.mobileillustrator.model.SnapResult
+import io.github.mhmmtbg.mobileillustrator.model.align
+import io.github.mhmmtbg.mobileillustrator.model.distribute
+import io.github.mhmmtbg.mobileillustrator.model.makeClippingMask
+import io.github.mhmmtbg.mobileillustrator.model.releaseClippingMask
+import io.github.mhmmtbg.mobileillustrator.model.withGradient
+import io.github.mhmmtbg.mobileillustrator.model.bounds
+import io.github.mhmmtbg.mobileillustrator.render.BooleanOp
+import io.github.mhmmtbg.mobileillustrator.render.PathBoolean
 import io.github.mhmmtbg.mobileillustrator.model.AnchorRef
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
@@ -60,6 +72,7 @@ import io.github.mhmmtbg.mobileillustrator.model.restyled
 import io.github.mhmmtbg.mobileillustrator.model.styleSample
 import io.github.mhmmtbg.mobileillustrator.model.toggleSmooth
 import io.github.mhmmtbg.mobileillustrator.model.transformNodes
+import io.github.mhmmtbg.mobileillustrator.model.transformedBy
 import io.github.mhmmtbg.mobileillustrator.model.ungroup
 import io.github.mhmmtbg.mobileillustrator.model.updateLayer
 import io.github.mhmmtbg.mobileillustrator.model.updateNode
@@ -98,11 +111,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private sealed interface Drag {
         data class Pan(val last: Offset) : Drag
-        data class Move(val ids: Set<String>, val start: Vec2) : Drag
+        data class Move(val ids: Set<String>, val start: Vec2, val bounds: Rect? = null, val targets: List<Rect> = emptyList()) : Drag
         data class Scale(val ids: Set<String>, val bounds: Rect, val handle: Handle) : Drag
         data class Rotate(val ids: Set<String>, val center: Vec2, val startAngle: Double) : Drag
         data class Marquee(val start: Vec2) : Drag
-        data class Create(val start: Vec2, val nodeId: String, val layerId: String) : Drag
+        data class Create(val start: Vec2, val nodeId: String, val layerId: String, val targets: List<Rect> = emptyList()) : Drag
         data class Pencil(val points: ArrayList<Vec2>, val nodeId: String, val layerId: String) : Drag
         data object PenHandle : Drag
         data class AnchorDrag(val nodeId: String, val ref: AnchorRef, val toLocal: Matrix, val origin: List<SubPath>, val start: Vec2) : Drag
@@ -212,6 +225,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             Tool.Text -> state = state.copy(
                 textPrompt = TextPrompt(nodeId = null, position = p, fontSize = defaultFontSize()),
             )
+            Tool.Eyedropper -> eyedrop(p)
             else -> {}
         }
     }
@@ -231,8 +245,14 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 drag = d.copy(last = currentScreen)
             }
             is Drag.Move -> {
-                val delta = now - d.start
-                state = state.copy(preview = base.transformNodes(d.ids, Matrix.translate(delta.x, delta.y)))
+                var delta = now - d.start
+                var guides: SnapResult? = null
+                if (d.bounds != null && d.targets.isNotEmpty()) {
+                    val snap = Snap.box(d.bounds.translate(delta.x, delta.y), d.targets, snapThreshold())
+                    delta = Vec2(delta.x + snap.dx, delta.y + snap.dy)
+                    guides = snap.takeIf { it.guidesX.isNotEmpty() || it.guidesY.isNotEmpty() }
+                }
+                state = state.copy(preview = base.transformNodes(d.ids, Matrix.translate(delta.x, delta.y)), guides = guides)
             }
             is Drag.Scale -> state = state.copy(preview = base.transformNodes(d.ids, scaleMatrix(d, now)))
             is Drag.Rotate -> {
@@ -241,7 +261,16 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 state = state.copy(preview = base.transformNodes(d.ids, m))
             }
             is Drag.Marquee -> state = state.copy(marquee = Rect.of(d.start, now))
-            is Drag.Create -> state = state.copy(preview = base.addNode(d.layerId, shapeNode(d, now)))
+            is Drag.Create -> {
+                var end = now
+                var guides: SnapResult? = null
+                if (d.targets.isNotEmpty()) {
+                    val snap = Snap.point(now, d.targets, snapThreshold())
+                    end = Vec2(now.x + snap.dx, now.y + snap.dy)
+                    guides = snap.takeIf { it.guidesX.isNotEmpty() || it.guidesY.isNotEmpty() }
+                }
+                state = state.copy(preview = base.addNode(d.layerId, shapeNode(d, end)), guides = guides)
+            }
             is Drag.Pencil -> {
                 val last = d.points.last()
                 if (last.distanceTo(now) * viewport.scale > 1.5) d.points += now
@@ -275,6 +304,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun onDragEnd() {
         val d = drag
         drag = null
+        if (state.guides != null) state = state.copy(guides = null)
         when (d) {
             is Drag.Marquee -> {
                 val rect = state.marquee
@@ -297,7 +327,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun onDragCancel() {
         val d = drag
         drag = null
-        if (state.marquee != null) state = state.copy(marquee = null)
+        if (state.marquee != null || state.guides != null) state = state.copy(marquee = null, guides = null)
         if (d == null || d == Drag.PenHandle || state.pen != null) return
         if (state.preview != null) state = state.copy(preview = null)
     }
@@ -312,7 +342,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 val hit = doc.hitTest(start, tol) ?: return Drag.Marquee(start)
                 val ids = if (hit.id in state.selection) state.selection else setOf(hit.id)
                 if (ids != state.selection) state = state.withSelection(ids)
-                return Drag.Move(ids, start)
+                return Drag.Move(ids, start, doc.boundsOf(ids), snapTargets(ids))
             }
             Tool.Direct -> return beginDirectDrag(start, startScreen)
             Tool.Pen -> {
@@ -325,9 +355,41 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                     state = state.copy(message = "Etkin katman kilitli ya da gizli")
                     return Drag.Pan(startScreen)
                 }
-                return if (state.tool == Tool.Pencil) Drag.Pencil(arrayListOf(start), newId(), layer.id) else Drag.Create(start, newId(), layer.id)
+                if (state.tool == Tool.Pencil) return Drag.Pencil(arrayListOf(start), newId(), layer.id)
+                val targets = snapTargets(emptySet())
+                val snap = if (targets.isEmpty()) null else Snap.point(start, targets, snapThreshold())
+                return Drag.Create(if (snap == null) start else Vec2(start.x + snap.dx, start.y + snap.dy), newId(), layer.id, targets)
+            }
+            Tool.Eyedropper -> return Drag.Pan(startScreen)
+        }
+    }
+
+    private fun snapThreshold(): Double = touchTolerancePx * 0.45 / viewport.scale
+
+    /**
+     * Yapışılabilecek kutular: çalışma yüzeyleri ve taşınmayan üst düzey nesneler. Çok kalabalık belgelerde
+     * yalnızca çalışma yüzeyleri kullanılır; hem hız hem de her yere yapışıp durmaması için.
+     */
+    private fun snapTargets(moving: Set<String>): List<Rect> {
+        if (!state.snapping) return emptyList()
+        val doc = present
+        val out = ArrayList<Rect>()
+        for (ab in doc.artboards) out += ab.bounds
+        val count = doc.layers.sumOf { it.children.size }
+        if (count <= 600) {
+            for (layer in doc.layers) {
+                if (!layer.visible) continue
+                for (n in layer.children) {
+                    if (!n.visible || n.id in moving) continue
+                    n.bounds()?.let(out::add)
+                }
             }
         }
+        return out
+    }
+
+    fun toggleSnapping() {
+        state = state.copy(snapping = !state.snapping, message = if (state.snapping) "Yakalama kapalı" else "Yakalama açık")
     }
 
     private fun drawingLayer(): Layer? {
@@ -387,13 +449,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private fun shapeNode(d: Drag.Create, now: Vec2): PathNode {
         val s = state
         val fill = s.fill?.let(Paint::Solid)
-        val stroke = s.stroke?.let { Stroke(Paint.Solid(it), s.strokeWidth) }
+        val stroke = s.stroke?.let(::styledStroke)
         return when (s.tool) {
             Tool.Line -> PathNode(
                 id = d.nodeId,
                 name = "Çizgi",
                 subpaths = listOf(Shapes.line(d.start, now)),
-                stroke = Stroke(Paint.Solid(s.stroke ?: Rgba.Black), s.strokeWidth),
+                stroke = styledStroke(s.stroke ?: Rgba.Black),
                 opacity = s.opacity,
             )
             Tool.Ellipse -> PathNode(
@@ -405,6 +467,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 fill = fill, stroke = stroke, opacity = s.opacity,
             )
         }
+    }
+
+    /** Araç çubuğundaki geçerli kontur ayarlarıyla (kalınlık, uç, köşe, çizgi türü) kontur. */
+    private fun styledStroke(color: Rgba): Stroke {
+        val s = state
+        return Stroke(Paint.Solid(color), s.strokeWidth, s.strokeCap, s.strokeJoin, dash = s.dashStyle.forWidth(s.strokeWidth))
     }
 
     private fun freehandStroke() =
@@ -436,7 +504,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             id = pen.nodeId,
             subpaths = listOf(SubPath(pen.anchors)),
             fill = state.fill?.let(Paint::Solid),
-            stroke = Stroke(Paint.Solid(state.stroke ?: Rgba.Black), state.strokeWidth),
+            stroke = styledStroke(state.stroke ?: Rgba.Black),
             opacity = state.opacity,
         )
         state = state.copy(pen = pen, preview = present.addNode(pen.layerId, node))
@@ -453,8 +521,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             id = pen.nodeId,
             subpaths = listOf(SubPath(pen.anchors, closed = close)),
             fill = state.fill?.let(Paint::Solid),
-            stroke = state.stroke?.let { Stroke(Paint.Solid(it), state.strokeWidth) }
-                ?: if (state.fill == null) Stroke(Paint.Solid(Rgba.Black), state.strokeWidth) else null,
+            stroke = state.stroke?.let(::styledStroke) ?: if (state.fill == null) styledStroke(Rgba.Black) else null,
             opacity = state.opacity,
         )
         state = state.copy(pen = null)
@@ -657,7 +724,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 if (target == PaintTarget.Fill) {
                     node.restyled({ color?.let(Paint::Solid) }, { it })
                 } else {
-                    node.restyled({ it }, { st -> color?.let { c -> (st ?: Stroke(Paint.Solid(c), width)).copy(paint = Paint.Solid(c)) } })
+                    node.restyled({ it }, { st -> color?.let { c -> (st ?: styledStroke(c).copy(width = width)).copy(paint = Paint.Solid(c)) } })
                 }
             }
         }
@@ -672,6 +739,172 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             d.updateNode(id) { n -> n.restyled({ it }, { st -> st?.copy(width = width) }) }
         }
         if (done) commit(doc) else state = state.copy(preview = doc.takeIf { it != present })
+    }
+
+    /** Kontur ucu, köşesi ve çizgi türü. Verilmeyenler değişmez. */
+    fun setStrokeStyle(cap: LineCap? = null, join: LineJoin? = null, dash: DashStyle? = null) {
+        var s = state.copy(
+            strokeCap = cap ?: state.strokeCap,
+            strokeJoin = join ?: state.strokeJoin,
+            dashStyle = dash ?: state.dashStyle,
+        )
+        // Noktalı çizgi ancak yuvarlak uçla nokta olarak görünür.
+        if (dash == DashStyle.Dotted) s = s.copy(strokeCap = LineCap.Round)
+        state = s
+        s.pen?.let { setPen(it); return }
+        val doc = s.selection.fold(present) { d, id ->
+            d.updateNode(id) { n ->
+                n.restyled({ it }, { st -> st?.copy(cap = s.strokeCap, join = s.strokeJoin, dash = s.dashStyle.forWidth(st.width)) })
+            }
+        }
+        commit(doc)
+    }
+
+    /** Seçimin dolgusuna (ya da kontur hedefi etkinse konturuna) gradyan uygular; her nesne kendi kutusuna göre boyanır. */
+    fun applyGradient(spec: GradientSpec) {
+        if (state.selection.isEmpty()) {
+            state = state.copy(message = "Gradyan için önce bir nesne seçin")
+            return
+        }
+        val toStroke = state.paintTarget == PaintTarget.Stroke
+        val width = state.strokeWidth
+        val doc = state.selection.fold(present) { d, id -> d.updateNode(id) { it.withGradient(spec, toStroke, width) } }
+        commit(doc)
+    }
+
+    /** Seçili tek nesnenin gradyanı (düzenleyiciyi onunla açmak için); yoksa `null`. */
+    fun currentGradient(): GradientSpec? {
+        val node = state.selection.singleOrNull()?.let { present.findNode(it) } ?: return null
+        val sample = node.styleSample() ?: return null
+        return GradientSpec.from(if (state.paintTarget == PaintTarget.Stroke) sample.second?.paint else sample.first)
+    }
+
+    private fun eyedrop(p: Vec2) {
+        val hit = present.hitTestDeep(p, tolerance()) ?: return
+        val sample = hit.styleSample() ?: run {
+            state = state.copy(message = "Bu nesneden stil alınamaz")
+            return
+        }
+        val fill = sample.first
+        val stroke = sample.second
+        val targets = state.selection - hit.id
+        if (targets.isEmpty()) {
+            // Seçim yoksa stil, bundan sonra çizilecekler için alınır.
+            state = state.copy(
+                fill = fill?.let { (it as? Paint.Solid)?.color ?: GradientSpec.from(it)?.stops?.firstOrNull()?.color ?: Rgba.Black },
+                stroke = (stroke?.paint as? Paint.Solid)?.color,
+                strokeWidth = stroke?.width ?: state.strokeWidth,
+                strokeCap = stroke?.cap ?: state.strokeCap,
+                strokeJoin = stroke?.join ?: state.strokeJoin,
+                opacity = hit.opacity,
+                message = "Stil alındı",
+            )
+            return
+        }
+        val spec = GradientSpec.from(fill)
+        val doc = targets.fold(present) { d, id ->
+            d.updateNode(id) { n ->
+                var out = n.restyled({ if (spec == null) fill else it }, { stroke?.let { st -> st.copy(paint = (st.paint as? Paint.Solid) ?: Paint.Solid(GradientSpec.from(st.paint)?.stops?.firstOrNull()?.color ?: Rgba.Black)) } })
+                if (spec != null) out = out.withGradient(spec)
+                out.withOpacity(hit.opacity)
+            }
+        }
+        commit(doc) { it.copy(message = "Stil uygulandı") }
+    }
+
+    // ---- Düzenleme: hizalama, Pathfinder, maske, sayısal dönüşüm --------------------------
+
+    private fun artboardFor(box: Rect?): Rect? {
+        val boards = present.artboards.map { it.bounds }
+        if (box == null) return boards.firstOrNull()
+        return boards.firstOrNull { it.contains(box.center) } ?: boards.minByOrNull { it.center.distanceTo(box.center) }
+    }
+
+    fun alignSelection(mode: Align) {
+        if (state.selection.isEmpty()) return
+        commit(present.align(state.selection, mode, artboardFor(present.boundsOf(state.selection))))
+    }
+
+    fun distributeSelection(horizontal: Boolean) {
+        if (state.selection.size < 3) {
+            state = state.copy(message = "Dağıtmak için en az üç nesne seçin")
+            return
+        }
+        commit(present.distribute(state.selection, horizontal))
+    }
+
+    fun makeClippingMask() {
+        val (doc, id) = present.makeClippingMask(state.selection) ?: run {
+            state = state.copy(message = "Maske için en üstte bir yol ve altında en az bir nesne seçin")
+            return
+        }
+        commit(doc) { it.withSelection(setOf(id)) }
+    }
+
+    fun releaseClippingMask() {
+        val id = state.selection.singleOrNull() ?: return
+        commit(present.releaseClippingMask(id))
+    }
+
+    /** Pathfinder: seçili yolları tek bir yola dönüştürür. */
+    fun pathfinder(op: BooleanOp) {
+        // Alttan üste sıralı, üst düzey yollar
+        val ordered = present.layers.flatMap { it.children }.filter { it.id in state.selection }
+        val paths = ordered.filterIsInstance<PathNode>()
+        if (paths.size < 2 || paths.size != ordered.size) {
+            state = state.copy(message = "Bu işlem için en az iki yol seçin (metni önce yola çevirin, grubu çözün)")
+            return
+        }
+        val result = try {
+            PathBoolean.combine(paths, op)
+        } catch (e: Throwable) {
+            null
+        }
+        if (result == null) {
+            state = state.copy(message = "Şekiller birleştirilemedi")
+            return
+        }
+        // Illustrator'daki gibi: çıkarmada alttaki nesnenin, diğerlerinde en üstteki nesnenin görünümü kalır.
+        val styleFrom = if (op == BooleanOp.MinusFront) paths.first() else paths.last()
+        var doc = present
+        for (n in paths) if (n.id != styleFrom.id) doc = doc.removeNode(n.id)
+        if (result.subpaths.isEmpty()) {
+            commit(doc.removeNode(styleFrom.id)) { it.copy(selection = emptySet(), nodeEdit = null, message = "Sonuç boş: şekiller kesişmiyor") }
+            return
+        }
+        val m = styleFrom.transform
+        val merged = styleFrom.copy(
+            subpaths = result.subpaths,
+            fillRule = result.rule,
+            transform = Matrix.Identity,
+            // Sonuç belge uzayında; boyalar da oraya taşınır.
+            fill = styleFrom.fill?.let { if (m.isIdentity) it else it.transformedBy(m) },
+            stroke = styleFrom.stroke?.let { st -> if (m.isIdentity) st else st.copy(paint = st.paint.transformedBy(m)) },
+        )
+        commit(doc.updateNode(styleFrom.id) { merged }) { it.withSelection(setOf(styleFrom.id)) }
+    }
+
+    fun selectionBounds(): Rect? = present.boundsOf(state.selection)
+
+    /** Seçimi verilen konuma ve boyuta getirir, sonra merkezinin çevresinde [rotateDegrees] kadar döndürür. */
+    fun transformSelection(x: Double, y: Double, width: Double, height: Double, rotateDegrees: Double) {
+        val b = selectionBounds() ?: return
+        val sx = if (b.width > 1e-9 && width > 0) width / b.width else 1.0
+        val sy = if (b.height > 1e-9 && height > 0) height / b.height else 1.0
+        var m = Matrix.translate(x, y) * Matrix.scale(sx, sy) * Matrix.translate(-b.left, -b.top)
+        if (rotateDegrees != 0.0) {
+            val cx = x + b.width * sx / 2
+            val cy = y + b.height * sy / 2
+            m = Matrix.translate(cx, cy) * Matrix.rotate(Math.toRadians(rotateDegrees)) * Matrix.translate(-cx, -cy) * m
+        }
+        commit(present.transformNodes(state.selection, m))
+    }
+
+    fun flipSelection(horizontal: Boolean) {
+        val b = selectionBounds() ?: return
+        val c = b.center
+        val m = Matrix.translate(c.x, c.y) * (if (horizontal) Matrix.scale(-1.0, 1.0) else Matrix.scale(1.0, -1.0)) * Matrix.translate(-c.x, -c.y)
+        commit(present.transformNodes(state.selection, m))
     }
 
     fun setOpacity(opacity: Double, done: Boolean) {
@@ -694,6 +927,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             fill = if (sample == null) fill else (f as? Paint.Solid)?.color ?: if (f == null) null else fill,
             stroke = if (sample == null) stroke else (st?.paint as? Paint.Solid)?.color ?: if (st == null) null else stroke,
             strokeWidth = st?.width ?: strokeWidth,
+            strokeCap = st?.cap ?: strokeCap,
+            strokeJoin = st?.join ?: strokeJoin,
+            dashStyle = st?.let { DashStyle.of(it.dash, it.width) } ?: dashStyle,
             opacity = node.opacity,
         )
     }

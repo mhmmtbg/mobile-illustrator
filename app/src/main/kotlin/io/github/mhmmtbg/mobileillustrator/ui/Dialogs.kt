@@ -202,3 +202,185 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
     )
 }
+
+@Composable
+private fun ChoiceRow(title: String, options: List<Pair<String, Boolean>>, onPick: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEachIndexed { i, (label, on) ->
+                Text(
+                    label,
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (on) AppColors.Accent else AppColors.PanelRaised)
+                        .clickable(role = Role.RadioButton) { onPick(i) }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    color = if (on) Color(0xFF2B1A0E) else AppColors.OnPanel,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+/** Kontur ucu, köşesi ve çizgi türü. Değişiklikler anında seçime uygulanır. */
+@Composable
+fun StrokeOptionsDialog(vm: io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel, onDismiss: () -> Unit) {
+    val s = vm.state
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Kontur seçenekleri") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                val caps = io.github.mhmmtbg.mobileillustrator.model.LineCap.entries
+                ChoiceRow("Uç", listOf("Düz" to (s.strokeCap == caps[0]), "Yuvarlak" to (s.strokeCap == caps[1]), "Kare" to (s.strokeCap == caps[2]))) {
+                    vm.setStrokeStyle(cap = caps[it])
+                }
+                val joins = io.github.mhmmtbg.mobileillustrator.model.LineJoin.entries
+                ChoiceRow("Köşe", listOf("Sivri" to (s.strokeJoin == joins[0]), "Yuvarlak" to (s.strokeJoin == joins[1]), "Kesik" to (s.strokeJoin == joins[2]))) {
+                    vm.setStrokeStyle(join = joins[it])
+                }
+                val dashes = io.github.mhmmtbg.mobileillustrator.editor.DashStyle.entries
+                val labels = listOf("Düz", "Kesik", "Uzun", "Noktalı")
+                ChoiceRow("Çizgi", dashes.mapIndexed { i, d -> labels[i] to (s.dashStyle == d) }) { vm.setStrokeStyle(dash = dashes[it]) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Tamam") } },
+    )
+}
+
+/** Sayısal konum, boyut ve döndürme. */
+@Composable
+fun TransformDialog(
+    bounds: io.github.mhmmtbg.mobileillustrator.model.Rect,
+    onDismiss: () -> Unit,
+    onFlip: (horizontal: Boolean) -> Unit,
+    onApply: (x: Double, y: Double, w: Double, h: Double, angle: Double) -> Unit,
+) {
+    fun fmt(v: Double): String = ((v * 100).toLong() / 100.0).let { if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString() }
+    var x by remember { mutableStateOf(fmt(bounds.left)) }
+    var y by remember { mutableStateOf(fmt(bounds.top)) }
+    var w by remember { mutableStateOf(fmt(bounds.width)) }
+    var h by remember { mutableStateOf(fmt(bounds.height)) }
+    var angle by remember { mutableStateOf("0") }
+    var lock by remember { mutableStateOf(true) }
+    fun num(s: String) = s.replace(',', '.').toDoubleOrNull()
+    val ratio = if (bounds.height > 0) bounds.width / bounds.height else 1.0
+    val valid = listOf(x, y, w, h, angle).all { num(it) != null } && (num(w) ?: 0.0) > 0 && (num(h) ?: 0.0) > 0
+    val keys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Dönüştür") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(x, { x = it }, Modifier.weight(1f), singleLine = true, label = { Text("X") }, keyboardOptions = keys)
+                    OutlinedTextField(y, { y = it }, Modifier.weight(1f), singleLine = true, label = { Text("Y") }, keyboardOptions = keys)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        w,
+                        { w = it; if (lock) num(it)?.let { v -> if (ratio > 0) h = fmt(v / ratio) } },
+                        Modifier.weight(1f), singleLine = true, label = { Text("Genişlik") }, keyboardOptions = keys,
+                    )
+                    OutlinedTextField(
+                        h,
+                        { h = it; if (lock) num(it)?.let { v -> w = fmt(v * ratio) } },
+                        Modifier.weight(1f), singleLine = true, label = { Text("Yükseklik") }, keyboardOptions = keys,
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { lock = !lock }) {
+                    Checkbox(lock, null)
+                    Text("Oranı koru")
+                }
+                OutlinedTextField(angle, { angle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Döndür (derece)") }, keyboardOptions = keys)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { onFlip(true); onDismiss() }) { Text("Yatay çevir") }
+                    TextButton(onClick = { onFlip(false); onDismiss() }) { Text("Dikey çevir") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onApply(num(x)!!, num(y)!!, num(w)!!, num(h)!!, num(angle)!!) }, enabled = valid) { Text("Uygula") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+    )
+}
+
+/** Gradyan düzenleyici: tür, açı ve renk durakları. */
+@Composable
+fun GradientDialog(
+    initial: io.github.mhmmtbg.mobileillustrator.model.GradientSpec,
+    onDismiss: () -> Unit,
+    onApply: (io.github.mhmmtbg.mobileillustrator.model.GradientSpec) -> Unit,
+) {
+    var radial by remember { mutableStateOf(initial.radial) }
+    var angle by remember { mutableStateOf(initial.angleDegrees.toFloat()) }
+    // Çok duraklı (içe aktarılmış) gradyanlar en çok altı durağa indirilir.
+    var stops by remember {
+        mutableStateOf(
+            initial.stops.sortedBy { it.offset }.let { all ->
+                if (all.size <= 6) all else (0 until 6).map { all[it * (all.size - 1) / 5] }
+            },
+        )
+    }
+    var picking by remember { mutableStateOf(-1) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gradyan") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val brushStops = stops.sortedBy { it.offset }.map { it.offset.toFloat() to Color(it.color.toArgb()) }.toTypedArray()
+                Box(
+                    Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(8.dp))
+                        .background(if (brushStops.size >= 2) androidx.compose.ui.graphics.Brush.horizontalGradient(*brushStops) else androidx.compose.ui.graphics.SolidColor(Color.Gray)),
+                )
+                ChoiceRow("Tür", listOf("Doğrusal" to !radial, "Dairesel" to radial)) { radial = it == 1 }
+                if (!radial) {
+                    Text("Açı: ${angle.toInt()}°", style = MaterialTheme.typography.labelMedium)
+                    Slider(angle, { angle = (it / 5).toInt() * 5f }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = "Gradyan açısı" })
+                }
+                stops.forEachIndexed { i, stop ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.width(44.dp).height(44.dp).clickable(role = Role.Button) { picking = i }.semantics { contentDescription = "Durak ${i + 1} rengi" },
+                            contentAlignment = Alignment.Center,
+                        ) { ColorDot(stop.color, Modifier.width(28.dp).height(28.dp)) }
+                        Slider(
+                            stop.offset.toFloat(),
+                            { v -> stops = stops.toMutableList().also { l -> l[i] = stop.copy(offset = (v * 100).toInt() / 100.0) } },
+                            modifier = Modifier.weight(1f).semantics { contentDescription = "Durak ${i + 1} konumu" },
+                        )
+                        TextButton(onClick = { stops = stops.filterIndexed { k, _ -> k != i } }, enabled = stops.size > 2) { Text("Sil") }
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        val sorted = stops.sortedBy { it.offset }
+                        val a = sorted[sorted.size - 2]
+                        val b = sorted[sorted.size - 1]
+                        // Yeni durak, son iki durağın ortasına ve ortalama renkle eklenir.
+                        val mid = io.github.mhmmtbg.mobileillustrator.model.GradientStop(
+                            (a.offset + b.offset) / 2,
+                            Rgba((a.color.r + b.color.r) / 2, (a.color.g + b.color.g) / 2, (a.color.b + b.color.b) / 2, (a.color.a + b.color.a) / 2),
+                        )
+                        stops = stops + mid
+                    },
+                    enabled = stops.size < 6,
+                ) { Text("Durak ekle") }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onApply(io.github.mhmmtbg.mobileillustrator.model.GradientSpec(radial, angle.toDouble(), stops.sortedBy { it.offset })) }) { Text("Uygula") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+    )
+    if (picking in stops.indices) {
+        val i = picking
+        ColorPickerDialog(stops[i].color, onDismiss = { picking = -1 }) { c ->
+            stops = stops.toMutableList().also { l -> l[i] = l[i].copy(color = c) }
+            picking = -1
+        }
+    }
+}

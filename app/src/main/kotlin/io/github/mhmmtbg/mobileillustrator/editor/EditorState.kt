@@ -5,11 +5,34 @@ import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.AnchorRef
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.History
+import io.github.mhmmtbg.mobileillustrator.model.LineCap
+import io.github.mhmmtbg.mobileillustrator.model.LineJoin
+import io.github.mhmmtbg.mobileillustrator.model.SnapResult
 import io.github.mhmmtbg.mobileillustrator.model.Rect
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
 
-enum class Tool { Select, Direct, Pen, Pencil, Rectangle, Ellipse, Line, Text }
+enum class Tool { Select, Direct, Pen, Pencil, Rectangle, Ellipse, Line, Text, Eyedropper }
+
+/** Kontur çizgi türü; aralıklar kalınlığa oranlıdır. */
+enum class DashStyle(val pattern: List<Double>) {
+    Solid(emptyList()), Dashed(listOf(3.0, 2.0)), LongDashed(listOf(6.0, 3.0)), Dotted(listOf(0.0, 2.0));
+
+    fun forWidth(width: Double): List<Double> = pattern.map { it * width }
+
+    companion object {
+        /** Var olan bir kesik çizgi desenine en yakın tür. */
+        fun of(dash: List<Double>, width: Double): DashStyle {
+            if (dash.size < 2 || width <= 0) return Solid
+            val a = dash[0] / width
+            return when {
+                a < 0.5 -> Dotted
+                a > 4.5 -> LongDashed
+                else -> Dashed
+            }
+        }
+    }
+}
 
 enum class PaintTarget { Fill, Stroke, Opacity }
 
@@ -77,7 +100,14 @@ data class EditorState(
     val fill: Rgba? = Rgba.rgb(0xFF9A3C),
     val stroke: Rgba? = Rgba.Black,
     val strokeWidth: Double = 4.0,
+    val strokeCap: LineCap = LineCap.Butt,
+    val strokeJoin: LineJoin = LineJoin.Miter,
+    val dashStyle: DashStyle = DashStyle.Solid,
     val opacity: Double = 1.0,
+    /** Nesneleri taşırken ve çizerken kenarlara ve ortalara yapışma. */
+    val snapping: Boolean = true,
+    /** Sürükleme sırasında gösterilen akıllı kılavuzlar. */
+    val guides: SnapResult? = null,
     val activeLayerId: String,
     val nodeEdit: NodeEdit? = null,
     val pen: PenState? = null,

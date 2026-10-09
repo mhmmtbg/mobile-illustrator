@@ -64,7 +64,10 @@ import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.editor.ExportFormat
 import io.github.mhmmtbg.mobileillustrator.editor.PaintTarget
 import io.github.mhmmtbg.mobileillustrator.editor.Tool
+import io.github.mhmmtbg.mobileillustrator.model.Align
+import io.github.mhmmtbg.mobileillustrator.model.GradientSpec
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
+import io.github.mhmmtbg.mobileillustrator.render.BooleanOp
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
 import io.github.mhmmtbg.mobileillustrator.model.ZMove
@@ -90,6 +93,7 @@ private val Tools = listOf(
     ToolSpec(Tool.Ellipse, AppIcons.Ellipse, "Elips"),
     ToolSpec(Tool.Line, AppIcons.Line, "Çizgi"),
     ToolSpec(Tool.Text, AppIcons.Text, "Metin"),
+    ToolSpec(Tool.Eyedropper, AppIcons.Eyedropper, "Damlalık"),
 )
 
 @Composable
@@ -114,6 +118,9 @@ fun EditorScreen(vm: EditorViewModel) {
     // Başka programın dosyası açıksa üzerine yazılmaz; ilk kayıtta yeni dosya adı sorulur.
     fun save() = if (vm.canSaveInPlace) vm.save() else saveAs()
     var renamingDocument by remember { mutableStateOf(false) }
+    var showGradient by remember { mutableStateOf(false) }
+    var showStrokeOptions by remember { mutableStateOf(false) }
+    var showTransform by remember { mutableStateOf(false) }
 
     // Geri tuşu önce açık panelleri kapatır.
     BackHandler(enabled = state.gallery != null || state.layersOpen) {
@@ -162,14 +169,14 @@ fun EditorScreen(vm: EditorViewModel) {
                 }
             }
             HorizontalDivider(color = AppColors.Divider)
-            ContextBar(vm, onRename = { renaming = it })
+            ContextBar(vm, onRename = { renaming = it }, onTransform = { showTransform = true })
             Column(
                 Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(vertical = 4.dp),
             ) {
-                PaintRow(vm, onCustomColor = { showPicker = true })
+                PaintRow(vm, onCustomColor = { showPicker = true }, onGradient = { showGradient = true }, onStrokeOptions = { showStrokeOptions = true })
                 if (!rail) ToolRow(vm)
             }
         }
@@ -185,6 +192,17 @@ fun EditorScreen(vm: EditorViewModel) {
             onImport = { vm.hideGallery(); openLauncher.launch(arrayOf("*/*")) },
             onClose = vm::hideGallery,
         )
+    }
+    if (showGradient) {
+        GradientDialog(vm.currentGradient() ?: GradientSpec.Default, onDismiss = { showGradient = false }) { showGradient = false; vm.applyGradient(it) }
+    }
+    if (showStrokeOptions) StrokeOptionsDialog(vm, onDismiss = { showStrokeOptions = false })
+    if (showTransform) {
+        val b = vm.selectionBounds()
+        if (b == null) showTransform = false else TransformDialog(b, onDismiss = { showTransform = false }, onFlip = vm::flipSelection) { x, y, w, h, angle ->
+            showTransform = false
+            vm.transformSelection(x, y, w, h, angle)
+        }
     }
     if (renamingDocument) {
         NameDialog("Belgeyi adlandır", state.history.present.name, onDismiss = { renamingDocument = false }) { renamingDocument = false; vm.renameDocument(it) }
@@ -257,6 +275,7 @@ private fun TopBar(
                 item("Görsel yerleştir…", onPlaceImage)
                 item("Belgeyi adlandır…", onRename)
                 item("Tümünü seç") { vm.selectAll() }
+                item(if (state.snapping) "Yakalama: açık" else "Yakalama: kapalı") { vm.toggleSnapping() }
             }
         }
         // Bağlı dosyaya yazılmamış değişiklik varsa adın başında nokta görünür.
@@ -299,9 +318,12 @@ internal fun BarButton(icon: ImageVector, label: String, enabled: Boolean = true
 
 /** Seçime ya da etkin araca göre değişen eylemler. Yapılacak bir şey yoksa yer kaplamaz. */
 @Composable
-private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit) {
+private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransform: () -> Unit) {
     val state = vm.state
     val actions = ArrayList<Pair<String, () -> Unit>>()
+    // Alt menüler: "Hizala" ve "Şekil" eylemleri aynı satırda açılır.
+    var mode by remember { mutableStateOf(0) }
+    if (state.selection.isEmpty() && mode != 0) mode = 0
     val doc = state.history.present
     val edit = state.nodeEdit
     when {
@@ -316,9 +338,34 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit) {
             actions += (if (curved) "Köşeye çevir" else "Yumuşat") to vm::toggleSmoothAnchor
             actions += "Düğümü sil" to vm::deleteSelection
         }
+        state.selection.isNotEmpty() && mode == 1 -> {
+            actions += "‹ Geri" to { mode = 0 }
+            actions += "Sola" to { vm.alignSelection(Align.Left) }
+            actions += "Yatay ortala" to { vm.alignSelection(Align.CenterH) }
+            actions += "Sağa" to { vm.alignSelection(Align.Right) }
+            actions += "Üste" to { vm.alignSelection(Align.Top) }
+            actions += "Dikey ortala" to { vm.alignSelection(Align.CenterV) }
+            actions += "Alta" to { vm.alignSelection(Align.Bottom) }
+            if (state.selection.size >= 3) {
+                actions += "Yatay dağıt" to { vm.distributeSelection(true) }
+                actions += "Dikey dağıt" to { vm.distributeSelection(false) }
+            }
+        }
+        state.selection.isNotEmpty() && mode == 2 -> {
+            actions += "‹ Geri" to { mode = 0 }
+            actions += "Birleştir" to { mode = 0; vm.pathfinder(BooleanOp.Unite) }
+            actions += "Öndekini çıkar" to { mode = 0; vm.pathfinder(BooleanOp.MinusFront) }
+            actions += "Kesiştir" to { mode = 0; vm.pathfinder(BooleanOp.Intersect) }
+            actions += "Dışla" to { mode = 0; vm.pathfinder(BooleanOp.Exclude) }
+            actions += "Maske yap" to { mode = 0; vm.makeClippingMask() }
+        }
         state.selection.isNotEmpty() -> {
             val nodes = state.selection.mapNotNull { doc.findNode(it) }
             val single = nodes.singleOrNull()
+            actions += "Hizala" to { mode = 1 }
+            if (nodes.size >= 2) actions += "Şekil" to { mode = 2 }
+            actions += "Dönüştür" to onTransform
+            if (single is GroupNode && single.clip != null) actions += "Maskeyi bırak" to vm::releaseClippingMask
             if (single is TextNode) {
                 actions += "Metni düzenle" to vm::editSelectedText
                 actions += "Yola çevir" to vm::outlineSelectedText
@@ -361,7 +408,7 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit) {
 }
 
 @Composable
-private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit) {
+private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit, onGradient: () -> Unit, onStrokeOptions: () -> Unit) {
     val state = vm.state
     Column {
         if (state.paintTarget == PaintTarget.Stroke && state.stroke != null) {
@@ -372,6 +419,7 @@ private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit) {
                 range = 0.25f..80f,
                 onChange = { vm.setStrokeWidth(snapWidth(it), done = false) },
                 onDone = { vm.setStrokeWidth(vm.state.strokeWidth, done = true) },
+                trailing = "Seçenekler" to onStrokeOptions,
             )
         }
         Row(Modifier.padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -406,6 +454,17 @@ private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit) {
                     ) {
                         Icon(AppIcons.Add, null, Modifier.size(26.dp).border(1.5.dp, AppColors.OnPanelMuted, CircleShape).padding(3.dp), tint = AppColors.OnPanel)
                     }
+                    Text(
+                        "Gradyan",
+                        Modifier
+                            .padding(horizontal = 4.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AppColors.PanelRaised)
+                            .clickable(role = Role.Button, onClick = onGradient)
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        color = AppColors.OnPanel,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                     for (c in Swatches) {
                         SwatchButton(c, current == c, "#%06X".format(c.toArgb() and 0xFFFFFF)) { vm.setColor(c) }
                     }
@@ -416,7 +475,10 @@ private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit) {
 }
 
 @Composable
-private fun SliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, onDone: () -> Unit) {
+private fun SliderRow(
+    label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, onDone: () -> Unit,
+    trailing: Pair<String, () -> Unit>? = null,
+) {
     Row(Modifier.padding(horizontal = 16.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(valueText, Modifier.width(60.dp), style = MaterialTheme.typography.labelMedium, color = AppColors.OnPanelMuted)
         // Kalınlıkta ince değerler daha çok kullanılır: kaydırıcı karekök ölçeğinde ilerler.
@@ -429,6 +491,19 @@ private fun SliderRow(label: String, valueText: String, value: Float, range: Clo
             valueRange = lo..hi,
             modifier = Modifier.weight(1f).semantics { contentDescription = label },
         )
+        trailing?.let { (text, action) ->
+            Text(
+                text,
+                Modifier
+                    .padding(start = 8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(AppColors.PanelRaised)
+                    .clickable(role = Role.Button, onClick = action)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                color = AppColors.OnPanel,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
     }
 }
 

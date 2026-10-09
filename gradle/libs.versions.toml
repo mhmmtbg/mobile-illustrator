@@ -6,6 +6,7 @@ activityCompose = "1.10.1"
 coreKtx = "1.16.0"
 lifecycle = "2.9.2"
 junit = "4.13.2"
+graphicsPath = "1.0.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -20,6 +21,7 @@ compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 junit = { module = "junit:junit", version.ref = "junit" }
+androidx-graphics-path = { module = "androidx.graphics:graphics-path", version.ref = "graphicsPath" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
 [plugins]

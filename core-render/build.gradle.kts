@@ -22,4 +22,6 @@ kotlin {
 
 dependencies {
     api(project(":core-model"))
+    // Android yolunu eğrileriyle birlikte okumak için (API 34 öncesinde de çalışır)
+    implementation(libs.androidx.graphics.path)
 }

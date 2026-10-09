@@ -37,6 +37,8 @@ data class Rect(val left: Double, val top: Double, val right: Double, val bottom
 
     fun intersects(o: Rect): Boolean = left <= o.right && o.left <= right && top <= o.bottom && o.top <= bottom
 
+    fun translate(dx: Double, dy: Double) = Rect(left + dx, top + dy, right + dx, bottom + dy)
+
     fun inflate(d: Double) = Rect(left - d, top - d, right + d, bottom + d)
 
     val corners: List<Vec2>

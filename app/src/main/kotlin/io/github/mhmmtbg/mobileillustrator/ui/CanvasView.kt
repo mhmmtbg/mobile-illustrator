@@ -185,6 +185,19 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                 }
             }
 
+            // Akıllı kılavuzlar: yapışılan kenar ya da orta çizgisi tuval boyunca gösterilir.
+            state.guides?.let { g ->
+                val guide = Color(0xFFFF2D9B)
+                for (x in g.guidesX) {
+                    val sx = viewport.toScreen(Vec2(x, 0.0)).x
+                    drawLine(guide, Offset(sx, 0f), Offset(sx, size.height), 1.dp.toPx())
+                }
+                for (y in g.guidesY) {
+                    val sy = viewport.toScreen(Vec2(0.0, y)).y
+                    drawLine(guide, Offset(0f, sy), Offset(size.width, sy), 1.dp.toPx())
+                }
+            }
+
             state.marquee?.let { m ->
                 val tl = viewport.toScreen(Vec2(m.left, m.top))
                 val size = Size((m.width * viewport.scale).toFloat(), (m.height * viewport.scale).toFloat())

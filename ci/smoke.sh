@@ -222,6 +222,28 @@ sleep 3
 wait_for "Adsız"
 tap "Dikdörtgen"
 adb shell input swipe $((W * 30 / 100)) $((H * 40 / 100)) $((W * 60 / 100)) $((H * 55 / 100)) 400
+# 9b) Pathfinder, gradyan, sayısal dönüşüm, hizalama: iki şekli birleştir
+tap "Elips"
+adb shell input swipe $((W * 50 / 100)) $((H * 48 / 100)) $((W * 80 / 100)) $((H * 62 / 100)) 400
+tap "Dosya menüsü"
+tap "Tümünü seç"
+tap "Hizala"
+tap "Üste"
+tap "‹ Geri"
+tap "Şekil"
+tap "Birleştir"
+sleep 1
+alive "pathfinder"
+tap "Gradyan"
+tap "Uygula"
+tap "Dönüştür"
+tap "Uygula"
+tap "Katmanlar"
+has "1 nesne" || fail "Birleştir iki şekli tek yola indirmedi"
+tap "Paneli kapat"
+shot 13a-birlestir
+alive "araçlar"
+
 tap "Dosya menüsü"
 tap "Belgelerim"
 wait_for "Belgelerim ekranı"
