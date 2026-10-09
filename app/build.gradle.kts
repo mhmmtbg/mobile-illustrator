@@ -18,6 +18,15 @@ android {
         versionCode = ciVersionCode
         versionName = "0.2.$ciVersionCode"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Reklam kimlikleri depoya yazılmaz; CI'da gizli değişkenlerden gelir. Tanımlı değilse Google'ın
+        // herkese açık deneme kimlikleri kullanılır (deneme reklamı gösterir, gelir üretmez).
+        val admobAppId = System.getenv("ADMOB_APP_ID")?.takeIf { it.isNotBlank() } ?: "ca-app-pub-3940256099942544~3347511713"
+        val admobBannerId = System.getenv("ADMOB_BANNER_ID")?.takeIf { it.isNotBlank() } ?: "ca-app-pub-3940256099942544/9214589741"
+        manifestPlaceholders["admobAppId"] = admobAppId
+        buildConfigField("String", "ADMOB_BANNER_ID", "\"$admobBannerId\"")
+        // Play Console'da tanımlanacak tek seferlik ürünün kimliği.
+        buildConfigField("String", "COFFEE_PRODUCT_ID", "\"coffee\"")
     }
 
     // Mağaza imzası: anahtar depoya konmaz. CI'da gizli değişkenler tanımlıysa onlar kullanılır,
@@ -46,9 +55,12 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")
+            // Otomatik testler reklamsız çalışır: düzen ve zamanlama reklam ağına bağlı kalmasın.
+            buildConfigField("Boolean", "ADS_ENABLED", "false")
         }
         release {
             // Kullanılmayan kod atılır ve küçültülür: APK belirgin biçimde küçülür, açılış hızlanır.
+            buildConfigField("Boolean", "ADS_ENABLED", "true")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -61,6 +73,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

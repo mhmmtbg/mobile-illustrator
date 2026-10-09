@@ -10,6 +10,10 @@
         android:largeHeap="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.MobileIllustrator">
+        <!-- AdMob uygulama kimliği: derleme sırasında verilir (bkz. app/build.gradle.kts); verilmezse Google'ın deneme kimliği kullanılır. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
