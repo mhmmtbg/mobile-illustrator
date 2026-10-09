@@ -111,6 +111,10 @@ if [ "$MODE" = quick ]; then
   expect "Geri al" enabled true "çizim geri alınabilmeli"
   alive "sürüm derlemesi"
   shot 01-surum
+  # Katman paneli açıkken de çizim görünür kalmalı (tablette panel yana yerleşir).
+  tap "Katmanlar"
+  wait_for "Katman paneli"
+  shot 02-surum-katmanlar
   if adb logcat -d -b crash | grep -q "$PKG"; then fail "Çökme kaydı bulundu (sürüm derlemesi)"; fi
   echo "Sürüm derlemesi denetimi geçti"
   exit 0

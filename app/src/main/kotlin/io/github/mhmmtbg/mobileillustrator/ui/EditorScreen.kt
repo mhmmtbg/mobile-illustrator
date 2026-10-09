@@ -138,7 +138,9 @@ fun EditorScreen(vm: EditorViewModel) {
 
     BoxWithConstraints(Modifier.fillMaxSize().background(AppColors.Panel)) {
         // Yatay telefonda araçlar yan şeride alınır; tuval yüksekliği korunur.
-        val rail = maxWidth > maxHeight && maxHeight < 560.dp
+        // Tablette (geniş ekran) araçlar yan şeritte durur ve katman paneli tuvali örtmeden yana yerleşir.
+        val wide = maxWidth >= 840.dp
+        val rail = wide || (maxWidth > maxHeight && maxHeight < 560.dp)
         Column(Modifier.fillMaxSize()) {
             TopBar(
                 vm,
@@ -158,7 +160,7 @@ fun EditorScreen(vm: EditorViewModel) {
                 if (rail) ToolRail(vm)
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     CanvasView(vm, Modifier.fillMaxSize())
-                    if (state.layersOpen) {
+                    if (state.layersOpen && !wide) {
                         LayersPanel(vm, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
                     }
                     state.busy?.let { BusyOverlay(it) }
@@ -180,6 +182,7 @@ fun EditorScreen(vm: EditorViewModel) {
                         )
                     }
                 }
+                if (state.layersOpen && wide) LayersPanel(vm, Modifier.fillMaxHeight().width(340.dp))
             }
             HorizontalDivider(color = AppColors.Divider)
             ContextBar(vm, onRename = { renaming = it }, onTransform = { showTransform = true })

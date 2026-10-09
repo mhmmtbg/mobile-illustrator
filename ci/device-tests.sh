@@ -3,12 +3,14 @@
 #  1) Araç testleri (çoklu dokunuş hareketleri, görsel regresyon) - hata ayıklama derlemesi
 #  2) Uçtan uca duman testi - hata ayıklama derlemesi
 #  3) Yayımlanan (küçültülmüş) sürüm derlemesinin kısa denetimi
-# Kullanım: ci/device-tests.sh <dist klasörü> <çıktı klasörü> <sürüm numarası>
+# Kullanım: ci/device-tests.sh <dist klasörü> <çıktı klasörü> <sürüm numarası> [phone|tablet]
+# Tablette araç testleri ve kısa akış çalışır (geniş ekran düzeni: yan araç şeridi, yana yerleşen katman paneli).
 set -euo pipefail
 
 DIST=$1
 OUT=$2
 VERSION=$3
+KIND=${4:-phone}
 PKG=io.github.mhmmtbg.mobileillustrator
 mkdir -p "$OUT"
 
@@ -28,6 +30,12 @@ if ! grep -q "^OK (" "$OUT/arac-testleri.txt"; then
 fi
 adb shell pm clear "$PKG" > /dev/null
 adb uninstall "$PKG.test" > /dev/null || true
+
+if [ "$KIND" = tablet ]; then
+  echo "== 2) Tablet: kısa akış =="
+  bash ci/smoke.sh "$DIST/test/app-debug.apk" "$OUT" quick
+  exit 0
+fi
 
 echo "== 2) Duman testi =="
 bash ci/smoke.sh "$DIST/test/app-debug.apk" "$OUT"

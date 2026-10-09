@@ -97,6 +97,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: phone
+            profile: pixel_6
+          - kind: tablet
+            profile: pixel_tablet
     env:
       VERSION_CODE: ${{ github.run_number }}
       GH_TOKEN: ${{ github.token }}
@@ -120,9 +128,9 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          profile: pixel_6
+          profile: ${{ matrix.profile }}
           disable-animations: true
-          script: bash ci/device-tests.sh dist shots ${{ github.run_number }}
+          script: bash ci/device-tests.sh dist shots ${{ github.run_number }} ${{ matrix.kind }}
 
       - name: Ekran görüntülerini Release'e ekle
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -130,4 +138,10 @@ jobs:
           ls shots/*.png > /dev/null 2>&1 || exit 0
           cp shots/ui.xml shots/ui.xml.txt 2>/dev/null || true
           [ -f shots/surum/01-surum.png ] && cp shots/surum/01-surum.png shots/00-surum-derlemesi.png
+          if [ "${{ matrix.kind }}" = tablet ]; then
+            mkdir tablet
+            for f in shots/*.png shots/*.txt; do if [ -f "$f" ]; then cp "$f" "tablet/tablet-$(basename "$f")"; fi; done
+            gh release upload "build-${VERSION_CODE}" tablet/* --clobber
+            exit 0
+          fi
           gh release upload "build-${VERSION_CODE}" shots/*.png shots/*.txt $(ls shots/disa-aktarim.* 2>/dev/null | grep -v "\.png$" || true) --clobber
