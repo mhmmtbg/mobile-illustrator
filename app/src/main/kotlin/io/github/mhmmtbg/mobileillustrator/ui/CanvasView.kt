@@ -58,6 +58,7 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
 
     // Karmaşık belgelerde kaydırma ve yakınlaştırma sırasında binlerce yolu her karede yeniden çizmek
     // yerine, arka planda hazırlanmış bir bit eşlem gösterilir; hareket bitince vektör çizime dönülür.
+    val backdrop = remember { DragBackdrop() }
     var raster by remember { mutableStateOf<RasterCache?>(null) }
     var gesturing by remember { mutableStateOf(false) }
     val committed = vm.state.history.present
@@ -124,12 +125,31 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
         clipRect {
             drawRect(AppColors.Pasteboard)
             val cached = raster?.takeIf { gesturing && it.document === document }
+            val moving = vm.movingIds
+            val base = state.history.present
+            // Kalabalık belgede nesne sürüklerken: geri kalan her şey bir kez görüntüye çizilir, her karede
+            // yalnızca sürüklenen nesneler yeniden çizilir. Sürükleme boyunca bu nesneler en üstte görünür.
+            val still = if (moving.isNotEmpty() && state.preview != null && cached == null) {
+                backdrop.get(base, moving, viewport, size.width.toInt(), size.height.toInt())
+            } else {
+                backdrop.clear()
+                null
+            }
+            val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(size.width, size.height)))
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
+                if (still != null) native.drawBitmap(still, 0f, 0f, null)
                 val count = native.save()
                 native.translate(viewport.offset.x, viewport.offset.y)
                 native.scale(viewport.scale, viewport.scale)
-                if (cached != null) cached.draw(native) else renderer.draw(native, document)
+                when {
+                    cached != null -> cached.draw(native)
+                    still != null -> for (layer in document.layers) {
+                        if (!layer.visible) continue
+                        for (node in layer.children) if (node.id in moving) renderer.drawNode(native, node)
+                    }
+                    else -> renderer.draw(native, document, visible = visible)
+                }
                 native.restoreToCount(count)
             }
             for (ab in document.artboards) outline(ab.bounds, viewport, Color(0x66000000), 1.dp.toPx())
@@ -272,5 +292,49 @@ private class RasterCache(val document: Document, private val bitmap: android.gr
                 null // bellek yetmezse önbelleksiz devam
             }
         }
+    }
+}
+
+/** Sürükleme sırasında yerinde duran nesnelerin, ekran boyutunda bir kez çizilmiş görüntüsü. */
+private class DragBackdrop {
+    private var bitmap: android.graphics.Bitmap? = null
+    private var base: Document? = null
+    private var ids: Set<String>? = null
+    private var viewport: Viewport? = null
+    private val renderer = DocumentRenderer()
+
+    fun clear() {
+        if (bitmap == null) return
+        bitmap = null
+        base = null
+        ids = null
+    }
+
+    /** Hafif belgelerde `null` döner; onlarda her şeyi her karede çizmek zaten akıcıdır. */
+    fun get(base: Document, ids: Set<String>, viewport: Viewport, width: Int, height: Int): android.graphics.Bitmap? {
+        val have = bitmap
+        if (have != null && this.base === base && this.ids === ids && this.viewport == viewport && have.width == width && have.height == height) return have
+        if (width <= 0 || height <= 0) return null
+        if (this.base !== base && base.layers.sumOf { it.children.size } < HEAVY) return null
+        return try {
+            val bmp = if (have != null && have.width == width && have.height == height) have else android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            canvas.drawColor(0xFF3A3A3D.toInt())
+            canvas.translate(viewport.offset.x, viewport.offset.y)
+            canvas.scale(viewport.scale, viewport.scale)
+            val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(width.toFloat(), height.toFloat())))
+            renderer.draw(canvas, base, visible = visible, skip = ids)
+            bitmap = bmp
+            this.base = base
+            this.ids = ids
+            this.viewport = viewport
+            bmp
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    private companion object {
+        const val HEAVY = 300
     }
 }

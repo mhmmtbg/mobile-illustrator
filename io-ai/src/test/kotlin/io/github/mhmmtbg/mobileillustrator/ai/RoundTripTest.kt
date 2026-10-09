@@ -303,3 +303,68 @@ class BlendTest {
         assertEquals(io.github.mhmmtbg.mobileillustrator.model.BlendMode.Normal, g.children[0].blendMode)
     }
 }
+
+class ImageCacheTest {
+    @Test
+    fun cachedImagesProduceIdenticalFilesAndSurviveRenumbering() {
+        val png = PngEncoder.encode(5, 3) { y, out ->
+            for (x in 0 until 5) { out[x * 4] = (x * 50).toByte(); out[x * 4 + 1] = (y * 80).toByte(); out[x * 4 + 2] = 9; out[x * 4 + 3] = (x * 60).toByte() }
+        }
+        val image = ImageData(png, "image/png", 5, 3)
+        val node = ImageNode(image = image)
+        fun doc(extra: Int) = Document(
+            name = "g",
+            artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 50.0, 50.0))),
+            // Önündeki nesne sayısı değişince görselin nesne numarası da değişir.
+            layers = listOf(Layer(name = "L", children = (0 until extra).map { TextNode(id = "t$it", text = "a$it") } + node)),
+        )
+        val options = AiExporter.Options()
+        val first = AiExporter.export(doc(0), options)
+        assertEquals(1, options.imageCache.size)
+        val again = AiExporter.export(doc(0), options)
+        assertTrue(first.contentEquals(again))
+        val shifted = AiImporter.import(AiExporter.export(doc(3), options), "g").document
+        val back = shifted.layers.single().children.last() as ImageNode
+        val raw = PngDecoder.decode(back.image.bytes)!!
+        assertEquals(50, raw.rgb[3].toInt() and 0xFF)
+        assertEquals(60, raw.alpha!![1].toInt() and 0xFF)
+        assertEquals(0, raw.alpha!![0].toInt() and 0xFF)
+    }
+}
+
+class StressFileTest {
+    /** CI'daki cihaz testinin açacağı 10.000 nesneli dosyayı üretir ve okuma süresini ölçer. */
+    @Test
+    fun tenThousandObjectsExportAndImport() {
+        val rnd = java.util.Random(1)
+        val layers = (0 until 5).map { l ->
+            Layer(
+                name = "Katman ${l + 1}",
+                children = (0 until 2000).map { i ->
+                    val x = rnd.nextDouble() * 1150
+                    val y = rnd.nextDouble() * 1150
+                    val color = Paint.Solid(Rgba(rnd.nextDouble(), rnd.nextDouble(), rnd.nextDouble()))
+                    io.github.mhmmtbg.mobileillustrator.model.PathNode(
+                        id = "n$l-$i",
+                        subpaths = listOf(if (i % 2 == 0) Shapes.ellipse(Rect(x, y, x + 30, y + 22)) else Shapes.rect(Rect(x, y, x + 26, y + 26))),
+                        fill = color,
+                        stroke = if (i % 3 == 0) Stroke(Paint.Solid(Rgba.Black), 1.0) else null,
+                        opacity = if (i % 7 == 0) 0.6 else 1.0,
+                    )
+                },
+            )
+        }
+        val doc = Document(name = "Stres", artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 1200.0, 1200.0))), layers = layers)
+        val t0 = System.nanoTime()
+        val bytes = AiExporter.export(doc)
+        val t1 = System.nanoTime()
+        val back = AiImporter.import(bytes, "Stres").document
+        val t2 = System.nanoTime()
+        assertEquals(5, back.layers.size)
+        assertEquals(10_000, back.layers.sumOf { it.children.size })
+        println("stres: yazma ${(t1 - t0) / 1_000_000} ms, okuma ${(t2 - t1) / 1_000_000} ms, ${bytes.size / 1024} KB")
+        assertTrue((t2 - t0) / 1e9 < 30, "10.000 nesnelik dosya makul sürede yazılıp okunmalı")
+        java.io.File("build").mkdirs()
+        java.io.File("build/stress.ai").writeBytes(bytes)
+    }
+}

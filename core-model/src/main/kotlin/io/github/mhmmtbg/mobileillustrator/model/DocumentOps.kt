@@ -35,10 +35,13 @@ fun Document.boundsOf(ids: Collection<String>): Rect? {
     if (ids.size == 1) return boundsOf(ids.first())
     val set = ids as? Set<String> ?: ids.toHashSet()
     var out: Rect? = null
+    val index = DocIndex.of(this)
     fun walk(nodes: List<Node>, m: Matrix) {
         for (n in nodes) {
             if (n.id in set) {
-                n.boundsIn(m)?.let { b -> out = out?.union(b) ?: b }
+                // Üst düzey düğümlerin kutusu dizinde hazırdır.
+                val b = if (m.isIdentity) index.entry(n)?.let { it.bounds } ?: n.boundsIn(m) else n.boundsIn(m)
+                b?.let { box -> out = out?.union(box) ?: box }
             } else if (n is GroupNode) {
                 walk(n.children, m * n.transform)
             }
@@ -120,11 +123,12 @@ fun Document.hitTestDeep(point: Vec2, tolerance: Double): Node? {
 /** Sınır kutusu [rect] ile kesişen, seçilebilir üst düzey düğümler (seçim çerçevesi için). */
 fun Document.nodesIn(rect: Rect): List<Node> {
     val out = ArrayList<Node>()
+    val index = DocIndex.of(this)
     for (layer in layers) {
         if (!layer.visible || layer.locked) continue
         for (n in layer.children) {
             if (!n.visible || n.locked) continue
-            val b = n.bounds() ?: continue
+            val b = index.bounds(n) ?: continue
             if (b.intersects(rect)) out += n
         }
     }

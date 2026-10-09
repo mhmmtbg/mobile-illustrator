@@ -5,6 +5,7 @@ import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.FillRule
 import io.github.mhmmtbg.mobileillustrator.model.GradientStop
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
+import io.github.mhmmtbg.mobileillustrator.model.ImageData
 import io.github.mhmmtbg.mobileillustrator.model.ImageNode
 import io.github.mhmmtbg.mobileillustrator.model.Layer
 import io.github.mhmmtbg.mobileillustrator.model.LineCap
@@ -43,6 +44,11 @@ object AiExporter {
         /** Tüm metinleri yola çevir (font farkı olmasın). */
         val outlineAllText: Boolean = false,
         val creator: String = PRODUCER,
+        /**
+         * Görsellerin PDF'e gömülmeye hazır (sıkıştırılmış) hali. Aynı seçenek nesnesi yeniden kullanıldıkça
+         * otomatik kayıt her seferinde görselleri baştan çözüp sıkıştırmaz.
+         */
+        val imageCache: MutableMap<ImageData, List<ByteArray>> = java.util.Collections.synchronizedMap(java.util.WeakHashMap()),
     )
 
     /** Dosyanın bilgi sözlüğüne yazılan üretici adı; içe aktarırken "bu dosyayı biz mi yazdık" sorusunu yanıtlar. */
@@ -373,7 +379,7 @@ object AiExporter {
 
         fun image(sb: StringBuilder, node: ImageNode) {
             val img = node.image
-            val id = imageCache.getOrPut(img) { embed(img.bytes, img.mimeType, img.width, img.height) ?: -1 }
+            val id = imageCache.getOrPut(img) { embed(img) ?: -1 }
             if (id < 0) return
             val index = xobjects.indexOf(id).let { if (it >= 0) it else { xobjects += id; xobjects.size - 1 } }
             sb.append("q\n")
@@ -381,6 +387,39 @@ object AiExporter {
             // Görsel uzayı birim karedir ve y yukarıdır; piksel uzayına (y aşağı) çevrilir.
             val m = node.transform * Matrix(img.width.toDouble(), 0.0, 0.0, -img.height.toDouble(), 0.0, img.height.toDouble())
             sb.append(cm(m)).append(" /X").append(index).append(" Do\nQ\n")
+        }
+
+        /**
+         * Görseli dosyaya ekler. Sıkıştırılmış gövdeler önbellekten gelirse yeniden üretilmez; yalnızca
+         * alfa maskesine giden (sabit genişlikte yazılmış) nesne numarası bu dosyaya göre düzeltilir.
+         */
+        fun embed(image: ImageData): Int? {
+            opt.imageCache[image]?.let { bodies ->
+                if (bodies.isEmpty()) return null
+                if (bodies.size == 2) {
+                    val sid = reserve()
+                    objects[sid - 1] = bodies[0]
+                    val body = bodies[1].copyOf()
+                    val at = io.github.mhmmtbg.mobileillustrator.pdf.PdfLexer.indexOf(body, SMASK_KEY, 0, minOf(body.size, 512))
+                    if (at < 0) return null
+                    val digits = sid.toString().padStart(10, '0')
+                    for (k in 0 until 10) body[at + SMASK_KEY.size + k] = digits[k].code.toByte()
+                    val id = reserve()
+                    objects[id - 1] = body
+                    return id
+                }
+                val id = reserve()
+                objects[id - 1] = bodies[0]
+                return id
+            }
+            val before = objects.size
+            val id = embed(image.bytes, image.mimeType, image.width, image.height)
+            opt.imageCache[image] = when {
+                id == null -> emptyList()
+                objects.size - before == 2 -> listOf(objects[id - 2]!!, objects[id - 1]!!)
+                else -> listOf(objects[id - 1]!!)
+            }
+            return id
         }
 
         fun embed(bytes: ByteArray, mime: String, w: Int, h: Int): Int? {
@@ -403,7 +442,8 @@ object AiExporter {
             raw.alpha?.let { a ->
                 val sid = reserve()
                 stream(sid, "/Type /XObject /Subtype /Image /Width ${raw.width} /Height ${raw.height} /ColorSpace /DeviceGray /BitsPerComponent 8", a)
-                smask = " /SMask $sid 0 R"
+                // Numara sabit genişlikte yazılır ki önbellekten yeniden kullanılırken yerinde değiştirilebilsin.
+                smask = " /SMask ${sid.toString().padStart(10, '0')} 0 R"
             }
             val id = reserve()
             stream(id, "/Type /XObject /Subtype /Image /Width ${raw.width} /Height ${raw.height} /ColorSpace /DeviceRGB /BitsPerComponent 8$smask", raw.rgb)
@@ -521,6 +561,7 @@ object AiExporter {
         }
     }
 
+    private val SMASK_KEY = "/SMask ".toByteArray(Charsets.ISO_8859_1)
     private val DefaultNames = setOf("Yol", "Grup", "Kırpma grubu", "Görsel")
     private val TurkishSlots = setOf(208, 221, 222, 240, 253, 254)
     private val Cp1252: Charset? = try { Charset.forName("windows-1252") } catch (e: Exception) { null }

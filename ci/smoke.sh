@@ -95,9 +95,9 @@ shot 06-tasima
 # 4) Çizim araçları
 tap "Dikdörtgen"
 adb shell input swipe $((W * 10 / 100)) $((H * 22 / 100)) $((W * 35 / 100)) $((H * 30 / 100)) 500
-tap "#FFFFFF"
 tap "Kontur"
-tap "#000000"
+tap "Özel renk"
+tap "Uygula"
 expect "Kontur kalınlığı" enabled true "kontur rengi varken kalınlık kaydırıcısı görünmeli"
 tap "Dolgu"
 
@@ -258,6 +258,36 @@ tap "Katmanlar"
 has "Pallette" || fail "galeriden açılan belge eksik"
 tap "Paneli kapat"
 alive "belgelerim"
+
+# 10) Performans: 10.000 nesneli dosyayı "birlikte aç" yoluyla aç, kare sürelerini ölç
+STRESS="$(dirname "$APK")/stress.ai"
+if [ -f "$STRESS" ]; then
+  adb push "$STRESS" /data/local/tmp/stress.ai > /dev/null
+  adb shell run-as "$PKG" cp /data/local/tmp/stress.ai files/stress.ai
+  t0=$(date +%s)
+  adb shell am start -W -a android.intent.action.VIEW -d "file:///data/user/0/$PKG/files/stress.ai" -n "$PKG/.MainActivity" > /dev/null
+  sleep 2
+  wait_for "stress"
+  t1=$(date +%s)
+  dismiss
+  sleep 4
+  alive "büyük dosya açma"
+  shot 14-stres
+  tap "Seçim"
+  adb shell dumpsys gfxinfo "$PKG" reset > /dev/null
+  # Nesne seç ve sürükle, sonra çerçeveyle çoklu seçip taşı
+  for i in 1 2 3; do
+    adb shell input swipe $((W * 50 / 100)) $((H * 45 / 100)) $((W * (30 + i * 10) / 100)) $((H * (35 + i * 5) / 100)) 900
+  done
+  adb shell input swipe $((W * 5 / 100)) $((H * 13 / 100)) $((W * 95 / 100)) $((H * 20 / 100)) 600
+  sleep 1
+  stats=$(adb shell dumpsys gfxinfo "$PKG" | grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|95th percentile|99th percentile" | tr -d '\r' | sed 's/^ *//' | paste -sd ';' -)
+  echo "::notice title=Performans (10.000 nesne)::açılış $((t1 - t0)) sn; $stats"
+  alive "büyük dosyada düzenleme"
+  shot 15-stres-surukleme
+else
+  echo "::warning title=Duman testi::stress.ai bulunamadı; performans adımı atlandı"
+fi
 
 if adb logcat -d -b crash | grep -q "$PKG"; then fail "Çökme kaydı bulundu"; fi
 echo "Duman testi geçti"

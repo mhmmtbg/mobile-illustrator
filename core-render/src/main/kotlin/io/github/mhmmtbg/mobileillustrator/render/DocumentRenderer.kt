@@ -62,7 +62,15 @@ class DocumentRenderer {
      * @param artboardColor çalışma yüzeyinin ARGB zemin rengi; `null` ise zemin çizilmez
      * (saydam PNG çıktısı için).
      */
-    fun draw(canvas: Canvas, document: Document, artboardColor: Int? = 0xFFFFFFFF.toInt()) {
+    fun draw(
+        canvas: Canvas,
+        document: Document,
+        artboardColor: Int? = 0xFFFFFFFF.toInt(),
+        /** Verilirse yalnızca bu bölgeye (belge koordinatı) değen üst düzey nesneler çizilir. */
+        visible: io.github.mhmmtbg.mobileillustrator.model.Rect? = null,
+        /** Çizilmeyecek üst düzey nesneler (sürüklenirken ayrıca çizilenler). */
+        skip: Set<String>? = null,
+    ) {
         if (artboardColor != null) {
             artboardPaint.color = artboardColor
             for (ab in document.artboards) {
@@ -75,7 +83,20 @@ class DocumentRenderer {
             if (!layer.visible || layer.opacity <= 0.0) continue
             val isolated = layer.opacity < 1.0
             if (isolated) canvas.saveLayerAlpha(null, alphaOf(layer.opacity))
-            for (node in layer.children) drawNode(canvas, node)
+            if (visible == null && skip == null) {
+                for (node in layer.children) drawNode(canvas, node)
+            } else {
+                val index = if (visible != null) io.github.mhmmtbg.mobileillustrator.model.DocIndex.of(document) else null
+                for (node in layer.children) {
+                    if (skip != null && node.id in skip) continue
+                    if (index != null && visible != null) {
+                        // Görünen alanın dışındaki nesneler hiç çizilmez (yakınlaştırılmış büyük belgelerde asıl kazanç).
+                        val box = index.painted(node) ?: continue
+                        if (!box.intersects(visible)) continue
+                    }
+                    drawNode(canvas, node)
+                }
+            }
             if (isolated) canvas.restore()
         }
     }

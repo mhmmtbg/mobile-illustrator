@@ -10,9 +10,13 @@ import kotlin.math.max
  * @param tolerance belge biriminde dokunma payı (ekran payı / yakınlaştırma).
  */
 fun Document.hitTest(point: Vec2, tolerance: Double): Node? {
+    val index = DocIndex.of(this)
     for (layer in layers.asReversed()) {
         if (!layer.visible || layer.locked) continue
         for (node in layer.children.asReversed()) {
+            // Önce ucuz kutu testi: parmağın yakınında olmayan nesnelerin eğrileri hiç hesaplanmaz.
+            val box = index.painted(node) ?: continue
+            if (point.x < box.left - tolerance || point.x > box.right + tolerance || point.y < box.top - tolerance || point.y > box.bottom + tolerance) continue
             if (node.hit(point, tolerance, Matrix.Identity)) return node
         }
     }

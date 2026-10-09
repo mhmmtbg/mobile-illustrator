@@ -104,6 +104,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** Parmak için ekranda sabit kalan dokunma payı (piksel); arayüz yoğunluğa göre ayarlar. */
     var touchTolerancePx: Float = 24f
 
+    /** Seçim aracıyla taşınan, ölçeklenen ya da döndürülen üst düzey nesneler; tuval bunları ayrı çizer. */
+    var movingIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     private var canvasSize = Size.Zero
     private var fitPending = true
     private var drag: Drag? = null
@@ -236,7 +240,15 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onDrag(startScreen: Offset, currentScreen: Offset) {
-        val d = drag ?: beginDrag(startScreen).also { drag = it }
+        val d = drag ?: beginDrag(startScreen).also {
+            drag = it
+            movingIds = when (it) {
+                is Drag.Move -> it.ids
+                is Drag.Scale -> it.ids
+                is Drag.Rotate -> it.ids
+                else -> emptySet()
+            }
+        }
         val base = present
         val now = viewport.toDocument(currentScreen)
         when (d) {
@@ -304,6 +316,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun onDragEnd() {
         val d = drag
         drag = null
+        if (movingIds.isNotEmpty()) movingIds = emptySet()
         if (state.guides != null) state = state.copy(guides = null)
         when (d) {
             is Drag.Marquee -> {
@@ -327,6 +340,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun onDragCancel() {
         val d = drag
         drag = null
+        if (movingIds.isNotEmpty()) movingIds = emptySet()
         if (state.marquee != null || state.guides != null) state = state.copy(marquee = null, guides = null)
         if (d == null || d == Drag.PenHandle || state.pen != null) return
         if (state.preview != null) state = state.copy(preview = null)

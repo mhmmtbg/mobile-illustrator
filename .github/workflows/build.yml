@@ -58,11 +58,15 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/mobile-illustrator-${VERSION_CODE}.apk"
+          # Birim testlerinin ürettiği 10.000 nesneli dosya: cihaz testinde performans ölçümü için
+          cp io-ai/build/stress.ai dist/stress.ai || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: mobile-illustrator-apk
-          path: dist/*.apk
+          path: |
+            dist/*.apk
+            dist/stress.ai
 
       - name: Release yayınla
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
