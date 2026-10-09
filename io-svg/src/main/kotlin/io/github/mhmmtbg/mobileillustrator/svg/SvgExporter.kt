@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.svg
 
+import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.FillRule
 import io.github.mhmmtbg.mobileillustrator.model.GradientStop
@@ -123,6 +124,7 @@ object SvgExporter {
         private fun common(n: Node) {
             if (!n.visible) sb.append(" display=\"none\"")
             if (n.opacity < 1.0) sb.append(" opacity=\"").append(num(n.opacity)).append('"')
+            if (n.blendMode != BlendMode.Normal) sb.append(" style=\"mix-blend-mode:").append(n.blendMode.cssName).append("\"")
             if (!n.transform.isIdentity) sb.append(" transform=\"").append(matrix(n.transform)).append('"')
         }
 

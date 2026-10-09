@@ -271,3 +271,35 @@ startxref
         near(2.0, (kids[1] as PathNode).stroke!!.width)
     }
 }
+
+class BlendTest {
+    @Test
+    fun blendModesSurviveOnPathsAndGroups() {
+        fun box(id: String) = io.github.mhmmtbg.mobileillustrator.model.PathNode(
+            id = id,
+            subpaths = listOf(Shapes.rect(Rect(0.0, 0.0, 10.0, 10.0))),
+            fill = Paint.Solid(Rgba.rgb(0x336699)),
+        )
+        val multiply = box("a").copy(blendMode = io.github.mhmmtbg.mobileillustrator.model.BlendMode.Multiply, opacity = 0.5)
+        val group = GroupNode(
+            name = "Gölge",
+            children = listOf(box("b"), box("c")),
+            blendMode = io.github.mhmmtbg.mobileillustrator.model.BlendMode.Screen,
+        )
+        val doc = Document(
+            name = "karışım",
+            artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 50.0, 50.0))),
+            layers = listOf(Layer(name = "L", children = listOf(multiply, group))),
+        )
+        val r = AiImporter.import(AiExporter.export(doc), "karışım")
+        assertEquals(emptyList(), r.warnings)
+        val kids = r.document.layers.single().children
+        assertEquals(io.github.mhmmtbg.mobileillustrator.model.BlendMode.Multiply, kids[0].blendMode)
+        assertTrue(abs(kids[0].opacity - 0.5) < 1e-3)
+        val g = kids[1] as GroupNode
+        assertEquals("Gölge", g.name)
+        assertEquals(io.github.mhmmtbg.mobileillustrator.model.BlendMode.Screen, g.blendMode)
+        assertEquals(2, g.children.size)
+        assertEquals(io.github.mhmmtbg.mobileillustrator.model.BlendMode.Normal, g.children[0].blendMode)
+    }
+}

@@ -14,6 +14,34 @@ sealed interface Node {
 
     /** Nesnenin yerel uzayından ebeveyninin uzayına dönüşüm. */
     val transform: Matrix
+
+    /** Nesnenin altındakilerle nasıl karıştığı (Illustrator'daki Saydamlık paneli). */
+    val blendMode: BlendMode
+}
+
+/** PDF ve SVG'deki karışım modları. */
+enum class BlendMode(val pdfName: String, val cssName: String) {
+    Normal("Normal", "normal"),
+    Multiply("Multiply", "multiply"),
+    Screen("Screen", "screen"),
+    Overlay("Overlay", "overlay"),
+    Darken("Darken", "darken"),
+    Lighten("Lighten", "lighten"),
+    ColorDodge("ColorDodge", "color-dodge"),
+    ColorBurn("ColorBurn", "color-burn"),
+    HardLight("HardLight", "hard-light"),
+    SoftLight("SoftLight", "soft-light"),
+    Difference("Difference", "difference"),
+    Exclusion("Exclusion", "exclusion"),
+    Hue("Hue", "hue"),
+    Saturation("Saturation", "saturation"),
+    Color("Color", "color"),
+    Luminosity("Luminosity", "luminosity");
+
+    companion object {
+        fun fromPdf(name: String?): BlendMode? = entries.firstOrNull { it.pdfName == name } ?: if (name == "Compatible") Normal else null
+        fun fromCss(name: String?): BlendMode? = entries.firstOrNull { it.cssName == name }
+    }
 }
 
 data class PathNode(
@@ -23,6 +51,7 @@ data class PathNode(
     override val locked: Boolean = false,
     override val opacity: Double = 1.0,
     override val transform: Matrix = Matrix.Identity,
+    override val blendMode: BlendMode = BlendMode.Normal,
     val subpaths: List<SubPath>,
     val fill: Paint? = null,
     val stroke: Stroke? = null,
@@ -39,6 +68,7 @@ data class GroupNode(
     override val locked: Boolean = false,
     override val opacity: Double = 1.0,
     override val transform: Matrix = Matrix.Identity,
+    override val blendMode: BlendMode = BlendMode.Normal,
     val children: List<Node>,
     /** Doluysa çocuklar bu yolun içine kırpılır (Illustrator'daki kırpma maskesi). */
     val clip: ClipPath? = null,
@@ -58,6 +88,7 @@ data class ImageNode(
     override val locked: Boolean = false,
     override val opacity: Double = 1.0,
     override val transform: Matrix = Matrix.Identity,
+    override val blendMode: BlendMode = BlendMode.Normal,
     val image: ImageData,
 ) : Node
 
@@ -69,6 +100,7 @@ data class TextNode(
     override val locked: Boolean = false,
     override val opacity: Double = 1.0,
     override val transform: Matrix = Matrix.Identity,
+    override val blendMode: BlendMode = BlendMode.Normal,
     val text: String,
     val fontSize: Double = 24.0,
     val fontFamily: String = "sans-serif",
@@ -143,6 +175,13 @@ fun Node.withLocked(locked: Boolean): Node = when (this) {
     is GroupNode -> copy(locked = locked)
     is ImageNode -> copy(locked = locked)
     is TextNode -> copy(locked = locked)
+}
+
+fun Node.withBlendMode(mode: BlendMode): Node = when (this) {
+    is PathNode -> copy(blendMode = mode)
+    is GroupNode -> copy(blendMode = mode)
+    is ImageNode -> copy(blendMode = mode)
+    is TextNode -> copy(blendMode = mode)
 }
 
 fun Node.withOpacity(opacity: Double): Node = when (this) {

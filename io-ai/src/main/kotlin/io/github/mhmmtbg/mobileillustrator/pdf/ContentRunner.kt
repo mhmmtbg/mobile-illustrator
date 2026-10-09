@@ -1,6 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.pdf
 
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
+import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.ClipPath
 import io.github.mhmmtbg.mobileillustrator.model.FillRule
 import io.github.mhmmtbg.mobileillustrator.model.GradientStop
@@ -19,6 +20,7 @@ import io.github.mhmmtbg.mobileillustrator.model.Stroke
 import io.github.mhmmtbg.mobileillustrator.model.SubPath
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
+import io.github.mhmmtbg.mobileillustrator.model.transformedBy
 import kotlin.math.abs
 
 /** Kırpma yığınının bir halkası. Kimlik karşılaştırılır: aynı `W` işleminden gelen nesneler aynı halkayı paylaşır. */
@@ -40,6 +42,7 @@ internal class Container(
     val unwrapSingle: Boolean = false,
     /** Bu uygulamanın yazdığı metin bloğu: içerik ne olursa olsun metin bu özelliklerden kurulur. */
     val text: TextProps? = null,
+    val blend: BlendMode = BlendMode.Normal,
 ) : Item() {
     val items = ArrayList<Item>()
 }
@@ -88,6 +91,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         var fillAlpha = 1.0
         var strokeAlpha = 1.0
         var clip: ClipLink? = null
+        var blend = BlendMode.Normal
         var font: PdfFont? = null
         var fontSize = 12.0
         var charSpace = 0.0
@@ -106,6 +110,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             g.dash = dash; g.dashPhase = dashPhase
             g.fillAlpha = fillAlpha; g.strokeAlpha = strokeAlpha
             g.clip = clip
+            g.blend = blend
             g.font = font; g.fontSize = fontSize; g.charSpace = charSpace; g.wordSpace = wordSpace
             g.hScale = hScale; g.leading = leading; g.rise = rise; g.renderMode = renderMode
             return g
@@ -140,6 +145,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val stroke: Stroke?,
         val opacity: Double,
         val clip: ClipLink?,
+        val blend: BlendMode,
     )
 
     fun start(base: Matrix) {
@@ -356,7 +362,9 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         file.num(d["CA"])?.let { gs.strokeAlpha = it.coerceIn(0.0, 1.0) }
         val bm = file.resolve(d["BM"])
         val mode = (bm as? PdfName)?.name ?: file.name((bm as? PdfArr)?.items?.firstOrNull())
-        if (mode != null && mode != "Normal" && mode != "Compatible") sink.warn("Karışım modları (${mode}) normal olarak gösterilir")
+        if (mode != null) {
+            gs.blend = BlendMode.fromPdf(mode) ?: BlendMode.Normal.also { sink.warn("Bilinmeyen karışım modu: $mode") }
+        }
         val smask = file.resolve(d["SMask"])
         if (smask != null && (smask as? PdfName)?.name != "None") sink.warn("Opaklık maskeleri yok sayıldı")
     }
@@ -460,15 +468,16 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             val sa = gs.strokeAlpha
             when {
                 f != null && s != null && fa == sa -> opacity = fa
-                f != null && s == null && f !is Paint.Solid -> opacity = fa
-                f == null && s != null && s.paint !is Paint.Solid -> opacity = sa
+                // Tek boyalı nesnede saydamlık nesnenin opaklığıdır (Illustrator'daki gibi), renge işlenmez.
+                f != null && s == null -> opacity = fa
+                f == null && s != null -> opacity = sa
                 else -> {
                     f = withAlpha(f, fa)
                     s = s?.let { it.copy(paint = withAlpha(it.paint, sa)!!) }
                 }
             }
             if (f != null || s != null) {
-                emit(Leaf(PathNode(subpaths = subpaths, fill = f, stroke = s, fillRule = rule, opacity = opacity), gs.clip))
+                emit(Leaf(PathNode(subpaths = subpaths, fill = f, stroke = s, fillRule = rule, opacity = opacity, blendMode = gs.blend), gs.clip))
             }
         }
         if (clipRule != null && subpaths.isNotEmpty()) {
@@ -559,7 +568,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val link = gs.clip
         val shape = link?.clip?.subpaths ?: listOf(Shapes.rect(pageRect))
         val rule = link?.clip?.rule ?: FillRule.NonZero
-        emit(Leaf(PathNode(subpaths = shape, fill = paint, fillRule = rule, opacity = gs.fillAlpha), link?.parent))
+        emit(Leaf(PathNode(subpaths = shape, fill = paint, fillRule = rule, opacity = gs.fillAlpha, blendMode = gs.blend), link?.parent))
     }
 
     // ---- XObject'ler ------------------------------------------------------
@@ -580,12 +589,13 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
                 val savedStack = ArrayList(stack)
                 val savedPath = Triple(ArrayList(done), cur, curClosed)
                 done.clear(); cur = null; curClosed = false
-                val isolated = xo.dict["Group"] != null && saved.fillAlpha < 1.0
+                val isolated = xo.dict["Group"] != null && (saved.fillAlpha < 1.0 || saved.blend != BlendMode.Normal)
                 if (isolated) {
-                    // Saydamlık grubu: opaklık içeriğe tek tek değil gruba bir bütün olarak uygulanır.
-                    containers += Container("Grup", saved.clip, opacity = saved.fillAlpha)
+                    // Saydamlık grubu: opaklık ve karışım modu içeriğe tek tek değil gruba bir bütün olarak uygulanır.
+                    containers += Container("Grup", saved.clip, opacity = saved.fillAlpha, blend = saved.blend)
                     gs.fillAlpha = 1.0
                     gs.strokeAlpha = 1.0
+                    gs.blend = BlendMode.Normal
                 }
                 run(bytes, formRes, gs.ctm, depth + 1)
                 if (isolated) {
@@ -635,7 +645,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             return
         }
         val m = gs.ctm * Matrix(1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0)
-        emit(Leaf(ImageNode(image = data, transform = m, opacity = gs.fillAlpha), gs.clip))
+        emit(Leaf(ImageNode(image = data, transform = m, opacity = gs.fillAlpha, blendMode = gs.blend), gs.clip))
     }
 
     // ---- Metin ------------------------------------------------------------
@@ -695,7 +705,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
 
         val prev = pendingText
         if (prev != null && prev.font === font && prev.fontSize == size && prev.fill == fill && prev.stroke == stroke &&
-            prev.opacity == opacity && prev.clip === gs.clip && sameLinear(prev.matrix, matrix)
+            prev.opacity == opacity && prev.clip === gs.clip && prev.blend == gs.blend && sameLinear(prev.matrix, matrix)
         ) {
             val local = prev.matrix.inverse()?.apply(matrix.apply(Vec2.Zero))
             if (local != null && abs(local.y) < size * 0.02 && local.x > prev.width - size * 0.08 && local.x < prev.width + size * 1.2) {
@@ -706,7 +716,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             }
         }
         flushText()
-        pendingText = TextRun(font, size, matrix, sb, width, fill, stroke, opacity, gs.clip)
+        pendingText = TextRun(font, size, matrix, sb, width, fill, stroke, opacity, gs.clip, gs.blend)
     }
 
     private fun sameLinear(a: Matrix, b: Matrix): Boolean {
@@ -719,18 +729,22 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         pendingText = null
         val text = t.text.toString()
         if (text.isBlank()) return
+        // Illustrator metni çoğu zaman "1 punto font x 30 kat dönüşüm" olarak yazar. Ölçek font boyutuna
+        // taşınır: boyut anlamlı bir sayı olur ve küçük boyutta harf aralıkları bozulmaz.
+        val k = kotlin.math.hypot(t.matrix.c, t.matrix.d).takeIf { it > 1e-9 && it.isFinite() } ?: 1.0
         val node = TextNode(
             name = text.trim().take(24),
             text = text,
-            fontSize = t.fontSize,
+            fontSize = t.fontSize * k,
             fontFamily = if (t.font.monospace) "monospace" else if (t.font.serif) "serif" else "sans-serif",
             bold = t.font.bold,
             italic = t.font.italic,
-            fill = t.fill,
-            stroke = t.stroke,
-            transform = t.matrix,
+            fill = t.fill?.transformedBy(Matrix.scale(k)),
+            stroke = t.stroke?.let { it.copy(width = it.width * k, paint = it.paint.transformedBy(Matrix.scale(k))) },
+            transform = t.matrix * Matrix.scale(1 / k),
             opacity = t.opacity,
-            measuredWidth = t.width,
+            blendMode = t.blend,
+            measuredWidth = t.width * k,
         )
         val leaf = Leaf(node, t.clip)
         if (containers.isNotEmpty()) containers.last().items += leaf else sink.emit(leaf)

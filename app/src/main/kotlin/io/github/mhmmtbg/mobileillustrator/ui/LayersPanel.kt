@@ -206,7 +206,7 @@ private fun NodeRow(vm: EditorViewModel, row: PanelRow.OfNode) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (node is GroupNode) "${node.children.size}" else kind,
+                if (node is GroupNode) "${node.children.size}" else if (node.name == kind || node.name.isBlank()) "" else kind,
                 Modifier.padding(horizontal = 10.dp),
                 color = AppColors.OnPanelMuted,
                 style = MaterialTheme.typography.labelSmall,

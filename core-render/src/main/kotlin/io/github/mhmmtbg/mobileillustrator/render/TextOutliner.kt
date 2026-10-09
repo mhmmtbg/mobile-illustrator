@@ -13,7 +13,7 @@ object TextOutliner {
 
     /** Metnin yerel uzayında (taban çizgisi başlangıcı 0,0) dış hatları. */
     fun outline(node: TextNode): List<SubPath> {
-        val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG)
+        val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.LINEAR_TEXT_FLAG).apply { hinting = AndroidPaint.HINTING_OFF }
         DocumentRenderer.configureText(paint, node)
         val path = AndroidPath()
         paint.getTextPath(node.text, 0, node.text.length, 0f, 0f, path)
@@ -22,7 +22,7 @@ object TextOutliner {
 
     /** Ölçülen metin genişliği (yerel birim). */
     fun measure(node: TextNode): Double {
-        val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG)
+        val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.LINEAR_TEXT_FLAG).apply { hinting = AndroidPaint.HINTING_OFF }
         DocumentRenderer.configureText(paint, node.copy(measuredWidth = null))
         return paint.measureText(node.text).toDouble()
     }

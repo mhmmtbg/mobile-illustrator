@@ -7,8 +7,12 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -30,7 +34,13 @@ import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.editor.Handle
 import io.github.mhmmtbg.mobileillustrator.editor.Tool
 import io.github.mhmmtbg.mobileillustrator.editor.Viewport
+import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.Rect
+import io.github.mhmmtbg.mobileillustrator.model.artboardBounds
+import io.github.mhmmtbg.mobileillustrator.model.nodeCount
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
 import io.github.mhmmtbg.mobileillustrator.model.boundsOf
 import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
@@ -45,6 +55,17 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val tolerancePx = with(density) { 14.dp.toPx() }
     SideEffect { vm.touchTolerancePx = tolerancePx }
+
+    // Karmaşık belgelerde kaydırma ve yakınlaştırma sırasında binlerce yolu her karede yeniden çizmek
+    // yerine, arka planda hazırlanmış bir bit eşlem gösterilir; hareket bitince vektör çizime dönülür.
+    var raster by remember { mutableStateOf<RasterCache?>(null) }
+    var gesturing by remember { mutableStateOf(false) }
+    val committed = vm.state.history.present
+    LaunchedEffect(committed) {
+        raster = null
+        delay(350)
+        raster = withContext(Dispatchers.Default) { RasterCache.build(committed) }
+    }
 
     Canvas(
         modifier
@@ -65,6 +86,7 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                             pressed.size >= 2 -> {
                                 if (!multiTouch) {
                                     multiTouch = true
+                                    gesturing = true
                                     vm.onDragCancel()
                                 }
                                 val zoom = event.calculateZoom()
@@ -88,6 +110,7 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                             // İki parmaktan biri kalktıysa kalan parmak bir şey çizmesin.
                         }
                     }
+                    gesturing = false
                     if (!multiTouch) {
                         if (dragging) vm.onDragEnd() else vm.onTap(down.position)
                     }
@@ -100,12 +123,13 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
 
         clipRect {
             drawRect(AppColors.Pasteboard)
+            val cached = raster?.takeIf { gesturing && it.document === document }
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
                 val count = native.save()
                 native.translate(viewport.offset.x, viewport.offset.y)
                 native.scale(viewport.scale, viewport.scale)
-                renderer.draw(native, document)
+                if (cached != null) cached.draw(native) else renderer.draw(native, document)
                 native.restoreToCount(count)
             }
             for (ab in document.artboards) outline(ab.bounds, viewport, Color(0x66000000), 1.dp.toPx())
@@ -199,5 +223,41 @@ private fun DrawScope.selectionBox(rect: Rect, viewport: Viewport, rotateOffset:
     for (h in Handle.entries) {
         if (small && !h.isCorner) continue
         anchorMark(viewport.toScreen(h.on(rect)), filled = false)
+    }
+}
+
+/** Belgenin çalışma yüzeylerini kapsayan, önceden çizilmiş görüntüsü. */
+private class RasterCache(val document: Document, private val bitmap: android.graphics.Bitmap, private val bounds: Rect) {
+    private val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+    private val dst = android.graphics.RectF(bounds.left.toFloat(), bounds.top.toFloat(), bounds.right.toFloat(), bounds.bottom.toFloat())
+
+    fun draw(canvas: android.graphics.Canvas) {
+        canvas.drawBitmap(bitmap, null, dst, paint)
+    }
+
+    companion object {
+        private const val HEAVY_NODE_COUNT = 400
+        private const val MAX_SIDE = 2048.0
+
+        /** Hafif belgeler için `null` döner: onları doğrudan çizmek zaten hızlıdır. */
+        fun build(document: Document): RasterCache? {
+            if (document.nodeCount() < HEAVY_NODE_COUNT) return null
+            val box = document.artboardBounds()?.let { it.inflate(maxOf(it.width, it.height) * 0.08) } ?: return null
+            if (box.width <= 0 || box.height <= 0) return null
+            val scale = MAX_SIDE / maxOf(box.width, box.height)
+            val w = (box.width * scale).toInt().coerceAtLeast(1)
+            val h = (box.height * scale).toInt().coerceAtLeast(1)
+            return try {
+                val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bmp)
+                canvas.scale(scale.toFloat(), scale.toFloat())
+                canvas.translate(-box.left.toFloat(), -box.top.toFloat())
+                // Arka plan iş parçacığında çalışır; ekran çizicisiyle durum paylaşmamak için ayrı bir çizici kullanılır.
+                DocumentRenderer().draw(canvas, document)
+                RasterCache(document, bmp, box)
+            } catch (e: Throwable) {
+                null // bellek yetmezse önbelleksiz devam
+            }
+        }
     }
 }

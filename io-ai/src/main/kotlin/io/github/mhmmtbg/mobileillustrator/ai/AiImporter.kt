@@ -1,6 +1,8 @@
 package io.github.mhmmtbg.mobileillustrator.ai
 
 import io.github.mhmmtbg.mobileillustrator.model.Artboard
+import io.github.mhmmtbg.mobileillustrator.model.BlendMode
+import io.github.mhmmtbg.mobileillustrator.model.withBlendMode
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
 import io.github.mhmmtbg.mobileillustrator.model.ImportException
@@ -165,7 +167,9 @@ object AiImporter {
                 val nm = b.info.name.ifEmpty { unnamed++; if (unnamed == 1) "Katman 1" else "Katman $unnamed" }
                 // Katmanın tamamı tek bir saydamlık grubuysa bu, katman opaklığıdır.
                 val whole = nodes.singleOrNull() as? GroupNode
-                if (whole != null && whole.name == "Grup" && whole.opacity < 1.0 && whole.clip == null && whole.transform.isIdentity) {
+                if (whole != null && whole.name == "Grup" && whole.opacity < 1.0 && whole.clip == null && whole.transform.isIdentity &&
+                    whole.blendMode == BlendMode.Normal
+                ) {
                     Layer(name = nm, visible = b.info.visible, locked = b.info.locked, opacity = whole.opacity, children = whole.children)
                 } else {
                     Layer(name = nm, visible = b.info.visible, locked = b.info.locked, children = nodes)
@@ -288,15 +292,19 @@ object AiImporter {
                         if (item.locked) n = n.withLocked(true)
                         n
                     }
-                    only != null && item.opacity < 1.0 && item.name == "Grup" && only.opacity == 1.0 ->
-                        only.withOpacity(item.opacity)
+                    // Tek nesneyi saran saydamlık grubu: opaklık ve karışım modu doğrudan nesneye verilir.
+                    only != null && (item.opacity < 1.0 || item.blend != BlendMode.Normal) && item.name == "Grup" &&
+                        only.opacity == 1.0 && only.blendMode == BlendMode.Normal ->
+                        only.withOpacity(item.opacity).withBlendMode(item.blend)
                     // Adlı grubun içinde yalnızca adsız bir grup varsa (kırpma ya da saydamlık sarmalı) ikisi tek gruptur.
-                    only is GroupNode && item.opacity == 1.0 && (only.name == "Grup" || only.name == "Kırpma grubu") ->
+                    only is GroupNode && item.opacity == 1.0 && item.blend == BlendMode.Normal &&
+                        (only.name == "Grup" || only.name == "Kırpma grubu") ->
                         only.copy(name = item.name, visible = item.visible, locked = item.locked)
                     else -> GroupNode(
                         name = item.name,
                         children = kids,
                         opacity = item.opacity,
+                        blendMode = item.blend,
                         visible = item.visible,
                         locked = item.locked,
                     )
@@ -308,6 +316,7 @@ object AiImporter {
             var fill: io.github.mhmmtbg.mobileillustrator.model.Paint? = null
             var stroke: io.github.mhmmtbg.mobileillustrator.model.Stroke? = null
             var opacity = 1.0
+            val blend = sample?.blendMode ?: BlendMode.Normal
             val inv = t.matrix.inverse()
             when (sample) {
                 is TextNode -> { fill = sample.fill; stroke = sample.stroke; opacity = sample.opacity }
@@ -332,6 +341,7 @@ object AiImporter {
                 fill = fill,
                 stroke = stroke,
                 opacity = opacity,
+                blendMode = blend,
                 transform = t.matrix,
             )
         }

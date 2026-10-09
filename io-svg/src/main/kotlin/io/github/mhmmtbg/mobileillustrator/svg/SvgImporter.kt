@@ -2,6 +2,7 @@ package io.github.mhmmtbg.mobileillustrator.svg
 
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.Artboard
+import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.ClipPath
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.FillRule
@@ -315,11 +316,12 @@ object SvgImporter {
             val m = props["transform"]?.let(::parseTransform) ?: Matrix.Identity
             val op = number(props["opacity"], 1.0).coerceIn(0.0, 1.0)
             val nm = labelOf(e)
+            val bm = BlendMode.fromCss(props["mix-blend-mode"]) ?: BlendMode.Normal
             return when (n) {
-                is PathNode -> n.copy(transform = m, opacity = op, visible = st.visible, name = nm ?: n.name)
-                is GroupNode -> n.copy(transform = m, opacity = op, name = nm ?: n.name)
-                is ImageNode -> n.copy(transform = m * n.transform, opacity = op, visible = st.visible, name = nm ?: n.name)
-                is TextNode -> n.copy(transform = m * n.transform, opacity = op, visible = st.visible, name = nm ?: n.name)
+                is PathNode -> n.copy(transform = m, opacity = op, visible = st.visible, name = nm ?: n.name, blendMode = bm)
+                is GroupNode -> n.copy(transform = m, opacity = op, name = nm ?: n.name, blendMode = bm)
+                is ImageNode -> n.copy(transform = m * n.transform, opacity = op, visible = st.visible, name = nm ?: n.name, blendMode = bm)
+                is TextNode -> n.copy(transform = m * n.transform, opacity = op, visible = st.visible, name = nm ?: n.name, blendMode = bm)
             }
         }
 

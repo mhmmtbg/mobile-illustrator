@@ -9,6 +9,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.ClipPath
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.FillRule
@@ -39,9 +40,12 @@ import android.graphics.Path as AndroidPath
 class DocumentRenderer {
     private val fillPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply { style = AndroidPaint.Style.FILL }
     private val strokePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply { style = AndroidPaint.Style.STROKE }
-    private val textPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.SUBPIXEL_TEXT_FLAG)
+    // Doğrusal metin + ipucu kapalı: harf genişlikleri yakınlaştırmayla birlikte tam ölçeklenir.
+    private val textPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.SUBPIXEL_TEXT_FLAG or AndroidPaint.LINEAR_TEXT_FLAG)
+        .apply { hinting = AndroidPaint.HINTING_OFF }
     private val bitmapPaint = AndroidPaint(AndroidPaint.FILTER_BITMAP_FLAG or AndroidPaint.ANTI_ALIAS_FLAG)
     private val artboardPaint = AndroidPaint().apply { style = AndroidPaint.Style.FILL }
+    private val layerPaint = AndroidPaint()
     private val matrix = AndroidMatrix()
     private val shaderMatrix = AndroidMatrix()
     private val matrixValues = FloatArray(9)
@@ -84,7 +88,7 @@ class DocumentRenderer {
         when (node) {
             is GroupNode -> {
                 node.clip?.let { canvas.clipPath(buildClip(it)) }
-                if (node.opacity < 1.0) canvas.saveLayerAlpha(null, alphaOf(node.opacity))
+                if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) saveBlendLayer(canvas, node.opacity, node.blendMode)
                 for (child in node.children) drawNode(canvas, child)
             }
             is PathNode -> drawPath(canvas, node)
@@ -106,17 +110,66 @@ class DocumentRenderer {
         // Dolgu ve kontur birlikteyse yarı saydamlıkta üst üste binen kısım koyulaşmasın
         // diye nesne ayrı bir katmanda birleştirilir.
         var alpha = node.opacity
-        if (alpha < 1.0 && fill != null && stroke != null) {
-            canvas.saveLayerAlpha(null, alphaOf(alpha))
+        var blend = node.blendMode
+        if (fill != null && stroke != null && (alpha < 1.0 || blend != BlendMode.Normal)) {
+            saveBlendLayer(canvas, alpha, blend)
             alpha = 1.0
+            blend = BlendMode.Normal
         }
         if (fill != null) {
             applyPaint(fillPaint, fill, alpha)
+            setBlend(fillPaint, blend)
             canvas.drawPath(path, fillPaint)
         }
         if (stroke != null) {
             applyStroke(strokePaint, stroke, alpha)
+            setBlend(strokePaint, blend)
             canvas.drawPath(path, strokePaint)
+        }
+    }
+
+    /** Opaklığı ve karışım modunu içeriğin tamamına birden uygulamak için ara katman açar. */
+    private fun saveBlendLayer(canvas: Canvas, opacity: Double, blend: BlendMode) {
+        layerPaint.alpha = alphaOf(opacity)
+        setBlend(layerPaint, blend)
+        canvas.saveLayer(null, layerPaint)
+    }
+
+    private fun setBlend(paint: AndroidPaint, blend: BlendMode) {
+        if (blend == BlendMode.Normal) {
+            if (paint.xfermode != null) paint.xfermode = null
+            return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            paint.blendMode = when (blend) {
+                BlendMode.Multiply -> android.graphics.BlendMode.MULTIPLY
+                BlendMode.Screen -> android.graphics.BlendMode.SCREEN
+                BlendMode.Overlay -> android.graphics.BlendMode.OVERLAY
+                BlendMode.Darken -> android.graphics.BlendMode.DARKEN
+                BlendMode.Lighten -> android.graphics.BlendMode.LIGHTEN
+                BlendMode.ColorDodge -> android.graphics.BlendMode.COLOR_DODGE
+                BlendMode.ColorBurn -> android.graphics.BlendMode.COLOR_BURN
+                BlendMode.HardLight -> android.graphics.BlendMode.HARD_LIGHT
+                BlendMode.SoftLight -> android.graphics.BlendMode.SOFT_LIGHT
+                BlendMode.Difference -> android.graphics.BlendMode.DIFFERENCE
+                BlendMode.Exclusion -> android.graphics.BlendMode.EXCLUSION
+                BlendMode.Hue -> android.graphics.BlendMode.HUE
+                BlendMode.Saturation -> android.graphics.BlendMode.SATURATION
+                BlendMode.Color -> android.graphics.BlendMode.COLOR
+                BlendMode.Luminosity -> android.graphics.BlendMode.LUMINOSITY
+                BlendMode.Normal -> android.graphics.BlendMode.SRC_OVER
+            }
+        } else {
+            // Android 9 ve öncesinde yalnızca temel modlar var; diğerleri normal çizilir.
+            val mode = when (blend) {
+                BlendMode.Multiply -> android.graphics.PorterDuff.Mode.MULTIPLY
+                BlendMode.Screen -> android.graphics.PorterDuff.Mode.SCREEN
+                BlendMode.Overlay -> android.graphics.PorterDuff.Mode.OVERLAY
+                BlendMode.Darken -> android.graphics.PorterDuff.Mode.DARKEN
+                BlendMode.Lighten -> android.graphics.PorterDuff.Mode.LIGHTEN
+                else -> null
+            }
+            paint.xfermode = mode?.let { android.graphics.PorterDuffXfermode(it) }
         }
     }
 
@@ -140,6 +193,7 @@ class DocumentRenderer {
         dst.set(0f, 0f, node.image.width.toFloat(), node.image.height.toFloat())
         if (canvas.quickReject(dst, Canvas.EdgeType.AA)) return
         bitmapPaint.alpha = alphaOf(node.opacity)
+        setBlend(bitmapPaint, node.blendMode)
         canvas.drawBitmap(bmp, null, dst, bitmapPaint)
     }
 
@@ -162,6 +216,7 @@ class DocumentRenderer {
     private fun drawText(canvas: Canvas, node: TextNode) {
         if (node.text.isEmpty()) return
         configureText(textPaint, node)
+        setBlend(textPaint, node.blendMode)
         val fill = node.fill
         val stroke = node.stroke?.takeIf { it.width > 0.0 }
         if (fill != null) {

@@ -95,7 +95,7 @@ shot 06-tasima
 # 4) Çizim araçları
 tap "Dikdörtgen"
 adb shell input swipe $((W * 10 / 100)) $((H * 22 / 100)) $((W * 35 / 100)) $((H * 30 / 100)) 500
-tap "#E5484D"
+tap "#000000"
 tap "Kontur"
 expect "Kontur kalınlığı" enabled true "kontur seçiliyken kalınlık kaydırıcısı görünmeli"
 tap "Renk yok"

@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.ai
 
+import io.github.mhmmtbg.mobileillustrator.model.BlendMode
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.FillRule
 import io.github.mhmmtbg.mobileillustrator.model.GradientStop
@@ -177,14 +178,14 @@ object AiExporter {
             val nodes = if (pageBox == null) layer.children else layer.children.filter { it.bounds()?.intersects(pageBox) != false }
             if (nodes.isEmpty()) return
             if (layer.opacity < 1.0) {
-                isolated(sb, layer.opacity, ctm) { inner -> for (n in nodes) node(inner, n, ctm) }
+                isolated(sb, layer.opacity, ctm) { inner: StringBuilder -> for (n in nodes) node(inner, n, ctm) }
             } else {
                 for (n in nodes) node(sb, n, ctm)
             }
         }
 
         /** İçeriği saydamlık grubu olarak yazar; opaklık parçalara tek tek değil bütüne uygulanır. */
-        fun isolated(sb: StringBuilder, opacity: Double, ctm: Matrix, body: (StringBuilder) -> Unit) {
+        fun isolated(sb: StringBuilder, opacity: Double, ctm: Matrix, blend: BlendMode = BlendMode.Normal, body: (StringBuilder) -> Unit) {
             val inner = StringBuilder()
             body(inner)
             val id = reserve()
@@ -196,11 +197,12 @@ object AiExporter {
                 inner.toString().toByteArray(Charsets.ISO_8859_1),
             )
             xobjects += id
-            sb.append("q ").append(gs(opacity, opacity)).append(" /X").append(xobjects.size - 1).append(" Do Q\n")
+            sb.append("q ").append(gs(opacity, opacity, blend)).append(" /X").append(xobjects.size - 1).append(" Do Q\n")
         }
 
-        fun gs(fillAlpha: Double, strokeAlpha: Double): String {
-            val def = "<< /ca ${n(fillAlpha.coerceIn(0.0, 1.0))} /CA ${n(strokeAlpha.coerceIn(0.0, 1.0))} >>"
+        fun gs(fillAlpha: Double, strokeAlpha: Double, blend: BlendMode = BlendMode.Normal): String {
+            val bm = if (blend == BlendMode.Normal) "" else " /BM /${blend.pdfName}"
+            val def = "<< /ca ${n(fillAlpha.coerceIn(0.0, 1.0))} /CA ${n(strokeAlpha.coerceIn(0.0, 1.0))}$bm >>"
             val name = extGStates.getOrPut(def) { "GS${extGStates.size}" }
             return "/$name gs"
         }
@@ -226,7 +228,7 @@ object AiExporter {
                     if (named) sb.append("/MI << /N ").append(textString(node.name)).append(" >> BDC\n")
                     sb.append("q\n")
                     if (!node.transform.isIdentity) sb.append(cm(node.transform)).append('\n')
-                    paintPath(sb, node.subpaths, node.fill, node.stroke, node.fillRule, node.opacity, ctm)
+                    paintPath(sb, node.subpaths, node.fill, node.stroke, node.fillRule, node.opacity, ctm, node.blendMode)
                     sb.append("Q\n")
                     if (named) sb.append("EMC\n")
                 }
@@ -242,7 +244,7 @@ object AiExporter {
                         for (child in node.children) node(s, child, ctm)
                         s.append("Q\n")
                     }
-                    if (node.opacity < 1.0) isolated(sb, node.opacity, parent, body) else body(sb)
+                    if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) isolated(sb, node.opacity, parent, node.blendMode, body) else body(sb)
                     sb.append("EMC\n")
                 }
                 is ImageNode -> image(sb, node)
@@ -271,12 +273,15 @@ object AiExporter {
             }
         }
 
-        fun paintPath(sb: StringBuilder, subpaths: List<SubPath>, fill: Paint?, stroke: Stroke?, rule: FillRule, opacity: Double, ctm: Matrix) {
+        fun paintPath(
+            sb: StringBuilder, subpaths: List<SubPath>, fill: Paint?, stroke: Stroke?, rule: FillRule, opacity: Double, ctm: Matrix,
+            blend: BlendMode = BlendMode.Normal,
+        ) {
             val st = stroke?.takeIf { it.width > 0 }
             if (fill == null && st == null) return
             val fa = opacity * alphaOf(fill)
             val sa = opacity * alphaOf(st?.paint)
-            if (fa < 1.0 || sa < 1.0) sb.append(gs(fa, sa)).append('\n')
+            if (fa < 1.0 || sa < 1.0 || blend != BlendMode.Normal) sb.append(gs(fa, sa, blend)).append('\n')
             if (fill != null) setPaint(sb, fill, false, ctm)
             if (st != null) {
                 setPaint(sb, st.paint, true, ctm)
@@ -369,7 +374,7 @@ object AiExporter {
             if (id < 0) return
             val index = xobjects.indexOf(id).let { if (it >= 0) it else { xobjects += id; xobjects.size - 1 } }
             sb.append("q\n")
-            if (node.opacity < 1.0) sb.append(gs(node.opacity, node.opacity)).append('\n')
+            if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) sb.append(gs(node.opacity, node.opacity, node.blendMode)).append('\n')
             // Görsel uzayı birim karedir ve y yukarıdır; piksel uzayına (y aşağı) çevrilir.
             val m = node.transform * Matrix(img.width.toDouble(), 0.0, 0.0, -img.height.toDouble(), 0.0, img.height.toDouble())
             sb.append(cm(m)).append(" /X").append(index).append(" Do\nQ\n")
@@ -416,7 +421,7 @@ object AiExporter {
             if (encoded != null) {
                 val fa = node.opacity * alphaOf(node.fill)
                 val sa = node.opacity * alphaOf(node.stroke?.paint)
-                if (fa < 1.0 || sa < 1.0) sb.append(gs(fa, sa)).append('\n')
+                if (fa < 1.0 || sa < 1.0 || node.blendMode != BlendMode.Normal) sb.append(gs(fa, sa, node.blendMode)).append('\n')
                 node.fill?.let { setPaint(sb, it, false, ctm) }
                 node.stroke?.let { setPaint(sb, it.paint, true, ctm); strokeState(sb, it) }
                 val mode = when {
@@ -429,7 +434,7 @@ object AiExporter {
                     .append(" Tr 1 0 0 -1 0 0 Tm ").append(encoded).append(" Tj ET\n")
             } else {
                 val outline = opt.outlineText?.invoke(node)
-                if (outline != null) paintPath(sb, outline, node.fill, node.stroke, FillRule.NonZero, node.opacity, ctm)
+                if (outline != null) paintPath(sb, outline, node.fill, node.stroke, FillRule.NonZero, node.opacity, ctm, node.blendMode)
             }
             sb.append("Q\nEMC\n")
         }
