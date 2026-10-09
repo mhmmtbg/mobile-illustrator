@@ -68,6 +68,8 @@ jobs:
             | grep -v '^> Task .* \(UP-TO-DATE\|FROM-CACHE\|SKIPPED\|NO-SOURCE\)$' \
             | sed -e "s#file://${GITHUB_WORKSPACE}/##" | awk '!seen[$0]++' | head -n 60 > errors.txt || true
           [ -s errors.txt ] || tail -n 40 build.log > errors.txt
+          # Lint hatası varsa raporun başı da eklenir.
+          find app/build -name "lint-results*.txt" -exec head -n 24 {} \; >> errors.txt 2> /dev/null || true
           split -l 12 errors.txt chunk_
           for f in chunk_*; do
             msg=$(sed -e 's/%/%25/g' "$f" | awk 'BEGIN{ORS="%0A"} {print}')

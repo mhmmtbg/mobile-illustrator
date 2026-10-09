@@ -68,10 +68,6 @@ def draw_icon(size, rounded=False, transparent_corners=False):
 
 
 def main():
-    play = ROOT / "store" / "play"
-    play.mkdir(parents=True, exist_ok=True)
-    # Google Play simgesi: 512x512, köşeleri mağaza yuvarlar; saydamlık olmamalı.
-    draw_icon(512).convert("RGB").save(play / "icon-512.png")
     # Masaüstü: pencere simgesi ve Windows kurulum simgesi.
     res = ROOT / "desktop" / "src" / "main" / "resources"
     res.mkdir(parents=True, exist_ok=True)

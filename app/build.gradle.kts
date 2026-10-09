@@ -104,6 +104,8 @@ dependencies {
     implementation(libs.play.billing)
     implementation(libs.play.services.ads)
     implementation(libs.play.ump)
+    // Reklam kitaplığı eski bir Fragment sürümü getirir; dosya seçicilerin (ActivityResult) doğru çalışması için güncel sürüm.
+    implementation(libs.androidx.fragment)
     debugImplementation(libs.compose.ui.tooling)
 
     androidTestImplementation(platform(libs.compose.bom))

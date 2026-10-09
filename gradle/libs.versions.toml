@@ -10,6 +10,7 @@ graphicsPath = "1.0.1"
 androidxTestExt = "1.2.1"
 androidxTestRunner = "1.6.2"
 billing = "8.0.0"
+fragment = "1.8.6"
 playServicesAds = "24.4.0"
 ump = "3.2.0"
 composeMultiplatform = "1.8.2"
@@ -33,6 +34,7 @@ androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "a
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
 play-billing = { module = "com.android.billingclient:billing", version.ref = "billing" }
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
 play-ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "ump" }

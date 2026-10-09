@@ -59,3 +59,13 @@ compose.desktop {
         }
     }
 }
+
+// Mağaza ekran görüntülerini üretir (uygulamanın gerçek ekranları, telefon ve tablet boyutlarında, iki dilde).
+// Ardından: python3 store/make_listing.py
+tasks.register<JavaExec>("storeScreenshots") {
+    group = "store"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("io.github.mhmmtbg.mobileillustrator.desktop.StoreScreenshots")
+    args(rootProject.file("store/raw").path)
+    jvmArgs("-Djava.awt.headless=true")
+}
