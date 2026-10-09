@@ -317,7 +317,13 @@ if [ -f "$STRESS" ]; then
   done
   adb shell input swipe $((W * 5 / 100)) $((H * 13 / 100)) $((W * 95 / 100)) $((H * 20 / 100)) 600
   sleep 1
-  adb shell dumpsys gfxinfo "$PKG" > "$OUT/gfxinfo.txt" 2>&1 || true
+  # Ana iş parçacığı meşgulken döküm zaman aşımına uğrar; boşalana kadar birkaç kez denenir.
+  for wait in 0 5 10 20; do
+    sleep $wait
+    adb shell dumpsys gfxinfo "$PKG" > "$OUT/gfxinfo.txt" 2>&1 || true
+    if grep -aq "Total frames rendered" "$OUT/gfxinfo.txt"; then break; fi
+    echo "gfxinfo alınamadı, $wait sn beklendi"
+  done
   stats=$(grep -aE "Total frames rendered|Janky frames|percentile" "$OUT/gfxinfo.txt" | tr -d '\r' | sed 's/^ *//' | head -n 8 | paste -sd ';' - || true)
   echo "::notice title=Performans (10.000 nesne)::açılış $((t1 - t0)) sn; $stats"
   alive "büyük dosyada düzenleme"
