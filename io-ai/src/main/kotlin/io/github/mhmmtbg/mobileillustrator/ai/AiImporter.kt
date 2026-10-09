@@ -359,6 +359,9 @@ object AiImporter {
                 blendMode = blend,
                 transform = t.matrix,
                 outline = outline,
+                align = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries.firstOrNull { it.name == t.align }
+                    ?: io.github.mhmmtbg.mobileillustrator.model.TextAlign.Start,
+                lineHeight = t.lineHeight,
             )
         }
     }

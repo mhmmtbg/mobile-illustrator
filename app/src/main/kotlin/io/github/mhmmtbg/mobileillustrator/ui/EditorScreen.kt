@@ -1,6 +1,8 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -105,6 +107,7 @@ fun EditorScreen(vm: EditorViewModel) {
     var renaming by remember { mutableStateOf<String?>(null) }
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::open) }
+    val fontLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importFont) }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(vm::placeImage) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         uri?.let { vm.export(it, exportFormat) }
@@ -216,8 +219,21 @@ fun EditorScreen(vm: EditorViewModel) {
         val node = state.history.present.findNode(id)
         if (node == null) renaming = null else NameDialog("Yeniden adlandır", node.name, onDismiss = { renaming = null }) { renaming = null; vm.renameNode(id, it) }
     }
-    state.textPrompt?.let { TextDialog(it, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText) }
+    state.textPrompt?.let {
+        TextDialog(it, vm.fonts, onLoadFont = { fontLauncher.launch(arrayOf("*/*")) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
+    }
     if (state.warnings.isNotEmpty()) WarningsDialog(state.warnings, vm::dismissWarnings)
+    state.crashReport?.let { report ->
+        val context = LocalContext.current
+        CrashDialog(
+            onShare = {
+                vm.dismissCrashReport()
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Mobile Illustrator çökme raporu").putExtra(Intent.EXTRA_TEXT, report)
+                try { context.startActivity(Intent.createChooser(send, "Raporu paylaş")) } catch (e: Exception) { /* paylaşacak uygulama yok */ }
+            },
+            onDismiss = vm::dismissCrashReport,
+        )
+    }
 }
 
 @Composable

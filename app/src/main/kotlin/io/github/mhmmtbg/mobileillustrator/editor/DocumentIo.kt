@@ -25,6 +25,13 @@ import java.io.IOException
 class DocumentIo(private val app: Application) {
 
     val store = DocumentStore(app.filesDir)
+    val fonts = FontStore(app.filesDir)
+
+    /** Seçilen font dosyasını uygulamaya yükler; fontun adını döndürür. */
+    fun importFont(uri: Uri): String {
+        val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException("Dosya açılamadı")
+        return fonts.add(displayName(uri), bytes)
+    }
 
     private val exportOptions = AiExporter.Options(outlineText = { TextOutliner.outline(it) })
 

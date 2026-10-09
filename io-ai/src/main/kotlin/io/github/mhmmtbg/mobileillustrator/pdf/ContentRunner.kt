@@ -55,6 +55,8 @@ internal class TextProps(
     val italic: Boolean,
     /** Metnin yerel uzayından belge uzayına. */
     val matrix: Matrix,
+    val align: String = "Start",
+    val lineHeight: Double = 1.2,
 )
 
 internal class LayerInfo(val name: String, val visible: Boolean, val locked: Boolean)
@@ -160,7 +162,13 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val blend: BlendMode,
         /** Harf biçimleri (yerel uzayda); font okunamadıysa `null`. */
         var outline: ArrayList<SubPath>?,
-    )
+    ) {
+        /** Alt alta gelen satırlar tek metinde toplanır. */
+        var lines = 1
+        var lineStep = 0.0
+        /** Son satırın o ana kadarki genişliği. */
+        var lastLineWidth = 0.0
+    }
 
     fun start(base: Matrix) {
         gs = GState()
@@ -348,6 +356,8 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
                     bold = file.bool(d["B"]) == true,
                     italic = file.bool(d["I"]) == true,
                     matrix = gs.ctm * m,
+                    align = file.name(d["A"]) ?: "Start",
+                    lineHeight = file.num(d["LH"]) ?: 1.2,
                 )
             }
             containers += Container(nm, gs.clip, unwrapSingle = kind != "Group", text = text)
@@ -757,10 +767,34 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             prev.opacity == opacity && prev.clip === gs.clip && prev.blend == gs.blend && sameLinear(prev.matrix, matrix)
         ) {
             val local = prev.matrix.inverse()?.apply(matrix.apply(Vec2.Zero))
-            if (local != null && abs(local.y) < size * 0.02 && local.x > prev.width - size * 0.08 && local.x < prev.width + size * 1.2) {
-                if (local.x - prev.width > size * 0.18 && !prev.text.endsWith(" ") && !sb.startsWith(" ")) prev.text.append(' ')
+            val lineY = (prev.lines - 1) * prev.lineStep
+            // Yeni satır: aynı sol kenardan, bir satır aşağıda başlayan metin (paragraf).
+            if (local != null && abs(local.x) < size * 0.02) {
+                val step = if (prev.lines == 1) local.y else prev.lineStep
+                val expected = lineY + step
+                if (step > size * 0.8 && step < size * 3.0 && abs(local.y - expected) < size * 0.03 && prev.lines < 400) {
+                    prev.text.append('\n').append(sb)
+                    prev.lines++
+                    prev.lineStep = step
+                    prev.lastLineWidth = width
+                    prev.width = maxOf(prev.width, width)
+                    val mine = outline
+                    val theirs = prev.outline
+                    if (mine != null && theirs != null) {
+                        val shift = Matrix.translate(local.x, local.y)
+                        for (sp in mine) theirs += sp.transformed(shift)
+                    } else {
+                        prev.outline = null
+                    }
+                    return
+                }
+            }
+            val lineEnd = prev.lastLineWidth
+            if (local != null && abs(local.y - lineY) < size * 0.02 && local.x > lineEnd - size * 0.08 && local.x < lineEnd + size * 1.2) {
+                if (local.x - lineEnd > size * 0.18 && !prev.text.endsWith(" ") && !sb.startsWith(" ")) prev.text.append(' ')
                 prev.text.append(sb)
-                prev.width = local.x + width
+                prev.lastLineWidth = local.x + width
+                prev.width = maxOf(prev.width, prev.lastLineWidth)
                 val mine = outline
                 val theirs = prev.outline
                 if (mine != null && theirs != null) {
@@ -773,7 +807,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             }
         }
         flushText()
-        pendingText = TextRun(font, size, matrix, sb, width, fill, stroke, opacity, gs.clip, gs.blend, outline)
+        pendingText = TextRun(font, size, matrix, sb, width, fill, stroke, opacity, gs.clip, gs.blend, outline).also { it.lastLineWidth = width }
     }
 
     private fun sameLinear(a: Matrix, b: Matrix): Boolean {
@@ -802,7 +836,8 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
             transform = t.matrix * Matrix.scale(1 / k),
             opacity = t.opacity,
             blendMode = t.blend,
-            measuredWidth = t.width * k,
+            measuredWidth = if (t.lines > 1) null else t.width * k,
+            lineHeight = if (t.lines > 1 && t.fontSize > 0) t.lineStep / t.fontSize else 1.2,
             outline = shapes?.let { list -> Matrix.scale(k).let { m -> list.map { it.transformed(m) } } },
         )
         val leaf = Leaf(node, t.clip)

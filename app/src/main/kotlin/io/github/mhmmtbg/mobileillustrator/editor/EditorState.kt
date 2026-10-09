@@ -8,6 +8,7 @@ import io.github.mhmmtbg.mobileillustrator.model.History
 import io.github.mhmmtbg.mobileillustrator.model.LineCap
 import io.github.mhmmtbg.mobileillustrator.model.LineJoin
 import io.github.mhmmtbg.mobileillustrator.model.SnapResult
+import io.github.mhmmtbg.mobileillustrator.model.TextAlign
 import io.github.mhmmtbg.mobileillustrator.model.Rect
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
@@ -78,6 +79,8 @@ data class TextPrompt(
     val fontFamily: String = "sans-serif",
     val bold: Boolean = false,
     val italic: Boolean = false,
+    val align: TextAlign = TextAlign.Start,
+    val lineHeight: Double = 1.2,
 )
 
 /** Açık belgenin depodaki kimliği ve (varsa) bağlı olduğu dış dosya. */
@@ -122,6 +125,8 @@ data class EditorState(
     val warnings: List<String> = emptyList(),
     val textPrompt: TextPrompt? = null,
     val session: DocSession,
+    /** Önceki oturum çökmeyle bittiyse hata ayrıntısı; kullanıcıya bir kez gösterilir. */
+    val crashReport: String? = null,
     /** Doluysa "Belgelerim" ekranı açıktır. */
     val gallery: List<StoredDocument>? = null,
 ) {

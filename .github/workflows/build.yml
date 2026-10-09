@@ -19,8 +19,19 @@ jobs:
     timeout-minutes: 30
     env:
       VERSION_CODE: ${{ github.run_number }}
+      # Mağaza imzası (isteğe bağlı): depo ayarlarında bu gizli değişkenler tanımlıysa sürüm onlarla imzalanır.
+      SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: İmza anahtarını hazırla
+        if: env.SIGNING_KEYSTORE_BASE64 != ''
+        run: |
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "SIGNING_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v5
         with:
@@ -37,7 +48,7 @@ jobs:
       - name: APK derle
         run: |
           set -o pipefail
-          ./gradlew :app:assembleDebug 2>&1 | tee -a build.log
+          ./gradlew :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee -a build.log
 
       # Hata satırlarını çalışmanın özetine not olarak düşer; log indirmeden okunabilir.
       - name: Hata özeti
@@ -56,17 +67,19 @@ jobs:
 
       - name: APK'yı adlandır
         run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/mobile-illustrator-${VERSION_CODE}.apk"
+          mkdir -p dist/test
+          # Yayımlanan dosya küçültülmüş sürüm derlemesidir; hata ayıklama derlemesi yalnızca testlerde kullanılır.
+          cp app/build/outputs/apk/release/app-release.apk "dist/mobile-illustrator-${VERSION_CODE}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk dist/test/app-debug.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/test/app-debug-androidTest.apk
+          ls -la dist dist/test
           # Birim testlerinin ürettiği 10.000 nesneli dosya: cihaz testinde performans ölçümü için
           cp io-ai/build/stress.ai dist/stress.ai || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: mobile-illustrator-apk
-          path: |
-            dist/*.apk
-            dist/stress.ai
+          path: dist
 
       - name: Release yayınla
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -83,7 +96,7 @@ jobs:
   smoke:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       VERSION_CODE: ${{ github.run_number }}
       GH_TOKEN: ${{ github.token }}
@@ -109,11 +122,12 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: bash ci/smoke.sh dist/mobile-illustrator-${{ github.run_number }}.apk shots
+          script: bash ci/device-tests.sh dist shots ${{ github.run_number }}
 
       - name: Ekran görüntülerini Release'e ekle
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           ls shots/*.png > /dev/null 2>&1 || exit 0
           cp shots/ui.xml shots/ui.xml.txt 2>/dev/null || true
+          [ -f shots/surum/01-surum.png ] && cp shots/surum/01-surum.png shots/00-surum-derlemesi.png
           gh release upload "build-${VERSION_CODE}" shots/*.png shots/*.txt $(ls shots/disa-aktarim.* 2>/dev/null | grep -v "\.png$" || true) --clobber

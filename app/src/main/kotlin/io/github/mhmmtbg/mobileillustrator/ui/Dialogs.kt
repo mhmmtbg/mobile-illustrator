@@ -2,6 +2,7 @@ package io.github.mhmmtbg.mobileillustrator.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,24 +108,29 @@ fun NewDocumentDialog(onDismiss: () -> Unit, onCreate: (Double, Double) -> Unit)
 }
 
 @Composable
-fun TextDialog(prompt: TextPrompt, onDismiss: () -> Unit, onConfirm: (TextPrompt) -> Unit) {
+fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, onDismiss: () -> Unit, onConfirm: (TextPrompt) -> Unit) {
     var text by remember { mutableStateOf(prompt.text) }
-    var size by remember { mutableStateOf(prompt.fontSize.let { if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString() }) }
-    var family by remember { mutableStateOf(prompt.fontFamily) }
+    var size by remember { mutableStateOf(prompt.fontSize.let { if (it == it.toLong().toDouble()) it.toLong().toString() else ((it * 100).toLong() / 100.0).toString() }) }
+    // Font yüklenince pencere açık kalır ve yeni font seçili gelir.
+    var family by remember(prompt.fontFamily) { mutableStateOf(prompt.fontFamily) }
     var bold by remember { mutableStateOf(prompt.bold) }
     var italic by remember { mutableStateOf(prompt.italic) }
+    var align by remember { mutableStateOf(prompt.align) }
+    var leading by remember { mutableStateOf(((prompt.lineHeight * 100).toLong() / 100.0).toString()) }
     val sizeValue = size.replace(',', '.').toDoubleOrNull()
+    val leadingValue = leading.replace(',', '.').toDoubleOrNull()
+    val keys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (prompt.nodeId == null) "Metin ekle" else "Metni düzenle") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Metin") }, maxLines = 3)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Metin") }, minLines = 2, maxLines = 6)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text("Boyut") }, keyboardOptions = keys)
+                    OutlinedTextField(leading, { leading = it }, Modifier.weight(1f), singleLine = true, label = { Text("Satır aralığı") }, keyboardOptions = keys)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        size, { size = it }, Modifier.width(110.dp), singleLine = true, label = { Text("Boyut") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    )
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { bold = !bold }) {
                         Checkbox(bold, null)
                         Text("Kalın")
@@ -134,8 +140,15 @@ fun TextDialog(prompt: TextPrompt, onDismiss: () -> Unit, onConfirm: (TextPrompt
                         Text("Eğik")
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for ((label, value) in listOf("Sans" to "sans-serif", "Serif" to "serif", "Mono" to "monospace")) {
+                val aligns = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries
+                ChoiceRow("Hizalama", listOf("Sola" to (align == aligns[0]), "Ortala" to (align == aligns[1]), "Sağa" to (align == aligns[2]))) { align = aligns[it] }
+                Text("Font", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val builtIn = listOf("Sans" to "sans-serif", "Serif" to "serif", "Mono" to "monospace")
+                    val custom = fonts.map { it to "font:$it" }
+                    // Belgedeki font bu cihazda yüklü değilse de listede görünür (seçim kaybolmasın).
+                    val missing = if (family.startsWith("font:") && custom.none { it.second == family }) listOf(family.removePrefix("font:") + " (yüklü değil)" to family) else emptyList()
+                    for ((label, value) in builtIn + custom + missing) {
                         val on = family == value
                         Text(
                             label,
@@ -146,15 +159,24 @@ fun TextDialog(prompt: TextPrompt, onDismiss: () -> Unit, onConfirm: (TextPrompt
                                 .padding(horizontal = 14.dp, vertical = 12.dp),
                             color = if (on) Color(0xFF2B1A0E) else AppColors.OnPanel,
                             style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
                         )
                     }
                 }
+                TextButton(onClick = onLoadFont) { Text("Font yükle (.ttf, .otf)…") }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(prompt.copy(text = text, fontSize = sizeValue ?: prompt.fontSize, fontFamily = family, bold = bold, italic = italic)) },
-                enabled = text.isNotBlank() && sizeValue != null && sizeValue > 0,
+                onClick = {
+                    onConfirm(
+                        prompt.copy(
+                            text = text, fontSize = sizeValue ?: prompt.fontSize, fontFamily = family, bold = bold, italic = italic,
+                            align = align, lineHeight = leadingValue ?: prompt.lineHeight,
+                        ),
+                    )
+                },
+                enabled = text.isNotBlank() && sizeValue != null && sizeValue > 0 && leadingValue != null && leadingValue > 0,
             ) { Text("Tamam") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
@@ -415,4 +437,20 @@ fun GradientDialog(
             picking = -1
         }
     }
+}
+
+@Composable
+fun CrashDialog(onShare: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Uygulama geçen sefer beklenmedik biçimde kapandı") },
+        text = {
+            Text(
+                "Çalışman otomatik kaydedildiği için yerinde olmalı. Hatanın ayrıntısı cihazında kaydedildi; " +
+                    "düzeltilebilmesi için raporu geliştiriciyle paylaşabilirsin. Rapor yalnızca teknik hata bilgisini ve cihaz modelini içerir.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onShare) { Text("Raporu paylaş") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Kapat") } },
+    )
 }

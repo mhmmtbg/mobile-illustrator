@@ -436,3 +436,50 @@ class InkTest {
         assertEquals(io.github.mhmmtbg.mobileillustrator.model.Ink.Cmyk(1.0, 0.0, 0.0, 0.0), back.stops.first().color.ink)
     }
 }
+
+class ParagraphTest {
+    @Test
+    fun multiLineAlignedTextSurvivesAsText() {
+        val t = TextNode(
+            name = "Paragraf", text = "Birinci satır\nİkinci satır\nüçüncü", fontSize = 20.0, lineHeight = 1.5,
+            align = io.github.mhmmtbg.mobileillustrator.model.TextAlign.Center, fontFamily = "font:Montserrat",
+            transform = Matrix.translate(100.0, 40.0),
+        )
+        val doc = Document(name = "p", artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 200.0, 200.0))), layers = listOf(Layer(name = "L", children = listOf(t))))
+        var outlined = 0
+        val bytes = AiExporter.export(doc, AiExporter.Options(outlineText = { outlined++; listOf(Shapes.rect(Rect(-40.0, -15.0, 40.0, 50.0))) }))
+        // Çok satırlı, ortalı, özel fontlu metin standart PDF metniyle yazılamaz: harfler yol olarak yazılır.
+        assertEquals(1, outlined)
+        val back = AiImporter.import(bytes, "p").document.layers.single().children.single() as TextNode
+        assertEquals(t.text, back.text)
+        assertEquals(io.github.mhmmtbg.mobileillustrator.model.TextAlign.Center, back.align)
+        assertTrue(abs(back.lineHeight - 1.5) < 1e-6)
+        assertEquals("font:Montserrat", back.fontFamily)
+        assertTrue(abs(back.transform.e - 100.0) < 1e-3)
+    }
+
+    @Test
+    fun stackedLinesInAForeignPdfBecomeOneParagraph() {
+        val content = "BT /F1 12 Tf 1 0 0 1 20 80 Tm (Ilk satir) Tj 0 -15 Td (Ikinci) Tj ( devam) Tj 0 -15 Td (Ucuncu) Tj ET " +
+            "BT /F1 12 Tf 1 0 0 1 120 80 Tm (Ayri) Tj ET"
+        val pdf = ("""%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj
+4 0 obj << /Length ${content.length} >>
+stream
+$content
+endstream
+endobj
+5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj
+trailer << /Root 1 0 R >>
+""").toByteArray(Charsets.ISO_8859_1)
+        val kids = AiImporter.import(pdf, "x").document.layers.single().children
+        assertEquals(2, kids.size)
+        val para = kids[0] as TextNode
+        assertEquals("Ilk satir\nIkinci devam\nUcuncu", para.text)
+        assertTrue(abs(para.lineHeight - 1.25) < 1e-6)
+        assertTrue(abs(para.fontSize - 12.0) < 1e-6)
+        assertEquals("Ayri", (kids[1] as TextNode).text)
+    }
+}

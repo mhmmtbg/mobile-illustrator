@@ -242,10 +242,24 @@ object SvgExporter {
             sb.append(" font-family=\"").append(esc(n.fontFamily)).append("\" font-size=\"").append(num(n.fontSize)).append('"')
             if (n.bold) sb.append(" font-weight=\"bold\"")
             if (n.italic) sb.append(" font-style=\"italic\"")
-            n.measuredWidth?.takeIf { it > 0 && n.text.length > 1 }?.let {
+            n.measuredWidth?.takeIf { it > 0 && n.text.length > 1 && n.text.indexOf('\n') < 0 }?.let {
                 sb.append(" textLength=\"").append(num(it)).append("\" lengthAdjust=\"spacingAndGlyphs\"")
             }
-            sb.append(" xml:space=\"preserve\">").append(esc(n.text)).append("</text>\n")
+            when (n.align) {
+                io.github.mhmmtbg.mobileillustrator.model.TextAlign.Center -> sb.append(" text-anchor=\"middle\"")
+                io.github.mhmmtbg.mobileillustrator.model.TextAlign.End -> sb.append(" text-anchor=\"end\"")
+                else -> {}
+            }
+            sb.append(" xml:space=\"preserve\">")
+            val lines = n.text.split('\n')
+            if (lines.size == 1) {
+                sb.append(esc(n.text))
+            } else {
+                for ((i, line) in lines.withIndex()) {
+                    sb.append("<tspan x=\"0\" y=\"").append(num(i * n.fontSize * n.lineHeight)).append("\">").append(esc(line)).append("</tspan>")
+                }
+            }
+            sb.append("</text>\n")
         }
     }
 }

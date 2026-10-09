@@ -356,6 +356,12 @@ class DocumentRenderer {
     }
 
     companion object {
+        const val CUSTOM_FONT_PREFIX = "font:"
+
+        /** Yüklenen fontları adından bulur; uygulama açılışında ayarlanır. Font cihazda yoksa `null` döner. */
+        @Volatile
+        var customFonts: ((String) -> Typeface?)? = null
+
         fun fillPath(path: AndroidPath, subpaths: List<SubPath>, rule: FillRule) {
             path.rewind()
             path.fillType = if (rule == FillRule.EvenOdd) AndroidPath.FillType.EVEN_ODD else AndroidPath.FillType.WINDING
@@ -386,6 +392,13 @@ class DocumentRenderer {
         }
 
         fun typefaceFor(node: TextNode): Typeface {
+            // Kullanıcının yüklediği font: "font:<ad>"
+            if (node.fontFamily.startsWith(CUSTOM_FONT_PREFIX)) {
+                customFonts?.invoke(node.fontFamily.removePrefix(CUSTOM_FONT_PREFIX))?.let { tf ->
+                    val style = (if (node.bold) Typeface.BOLD else 0) or (if (node.italic) Typeface.ITALIC else 0)
+                    return if (style == 0) tf else Typeface.create(tf, style)
+                }
+            }
             val family = node.fontFamily.lowercase()
             val base = when {
                 family.contains("mono") || family.contains("courier") -> Typeface.MONOSPACE
@@ -406,14 +419,16 @@ class DocumentRenderer {
          * çok satırlıda satırlar aşağı doğru dizilir ve hizalamaya göre yatay kayar.
          */
         inline fun forEachLine(node: TextNode, paint: AndroidPaint, action: (line: String, x: Float, y: Float) -> Unit) {
-            if (node.text.indexOf('\n') < 0) {
+            val start = node.align == io.github.mhmmtbg.mobileillustrator.model.TextAlign.Start
+            if (start && node.text.indexOf('\n') < 0) {
                 action(node.text, 0f, 0f)
                 return
             }
-            val step = (node.fontSize * 1.2).toFloat()
+            val step = (node.fontSize * node.lineHeight).toFloat()
             var y = 0f
             for (line in node.text.split('\n')) {
-                action(line, 0f, y)
+                val x = if (start) 0f else paint.measureText(line).let { if (node.align == io.github.mhmmtbg.mobileillustrator.model.TextAlign.Center) -it / 2 else -it }
+                action(line, x, y)
                 y += step
             }
         }
@@ -424,7 +439,7 @@ class DocumentRenderer {
             paint.textSize = node.fontSize.toFloat()
             paint.textScaleX = 1f
             val want = node.measuredWidth
-            if (want != null && want > 0.0 && node.text.isNotBlank()) {
+            if (want != null && want > 0.0 && node.text.isNotBlank() && node.text.indexOf('\n') < 0) {
                 val have = paint.measureText(node.text)
                 if (have > 0f) paint.textScaleX = (want / have).toFloat().coerceIn(0.5f, 2f)
             }

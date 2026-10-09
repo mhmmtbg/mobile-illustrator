@@ -6,6 +6,8 @@ set -euo pipefail
 
 APK=$1
 OUT=$2
+# "quick": yalnızca açılış, dosya açma ve katmanlar (küçültülmüş sürüm derlemesinin bozulmadığını görmek için).
+MODE=${3:-full}
 PKG=io.github.mhmmtbg.mobileillustrator
 mkdir -p "$OUT"
 
@@ -86,6 +88,17 @@ expect "Geri al" enabled true "gizleme geri alınabilmeli"
 tap "Gopher içeriği"
 shot 04-katman-icerigi
 tap "Paneli kapat"
+
+if [ "$MODE" = quick ]; then
+  tap "Dikdörtgen"
+  adb shell input swipe $((W * 10 / 100)) $((H * 22 / 100)) $((W * 35 / 100)) $((H * 30 / 100)) 500
+  expect "Geri al" enabled true "çizim geri alınabilmeli"
+  alive "sürüm derlemesi"
+  shot 01-surum
+  if adb logcat -d -b crash | grep -q "$PKG"; then fail "Çökme kaydı bulundu (sürüm derlemesi)"; fi
+  echo "Sürüm derlemesi denetimi geçti"
+  exit 0
+fi
 
 # 3) Seçim: gopher'ın gövdesine dokun, taşı, ölçekle
 tap "Seçim"
@@ -267,7 +280,7 @@ tap "Paneli kapat"
 alive "belgelerim"
 
 # 10) Performans: 10.000 nesneli dosyayı "birlikte aç" yoluyla aç, kare sürelerini ölç
-STRESS="$(dirname "$APK")/stress.ai"
+STRESS="$(dirname "$APK")/../stress.ai"
 if [ -f "$STRESS" ]; then
   adb push "$STRESS" /data/local/tmp/stress.ai > /dev/null
   adb shell run-as "$PKG" cp /data/local/tmp/stress.ai files/stress.ai
@@ -288,7 +301,8 @@ if [ -f "$STRESS" ]; then
   done
   adb shell input swipe $((W * 5 / 100)) $((H * 13 / 100)) $((W * 95 / 100)) $((H * 20 / 100)) 600
   sleep 1
-  stats=$(adb shell dumpsys gfxinfo "$PKG" 2> /dev/null | grep -E "Total frames rendered|Janky frames:|50th percentile|90th percentile|95th percentile|99th percentile" | tr -d '\r' | sed 's/^ *//' | paste -sd ';' - || true)
+  adb shell dumpsys gfxinfo "$PKG" > "$OUT/gfxinfo.txt" 2>&1 || true
+  stats=$(grep -aE "Total frames rendered|Janky frames|percentile" "$OUT/gfxinfo.txt" | tr -d '\r' | sed 's/^ *//' | head -n 8 | paste -sd ';' - || true)
   echo "::notice title=Performans (10.000 nesne)::açılış $((t1 - t0)) sn; $stats"
   alive "büyük dosyada düzenleme"
   shot 15-stres-surukleme

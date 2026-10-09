@@ -18,6 +18,7 @@ import io.github.mhmmtbg.mobileillustrator.model.PathNode
 import io.github.mhmmtbg.mobileillustrator.model.Rect
 import io.github.mhmmtbg.mobileillustrator.model.Stroke
 import io.github.mhmmtbg.mobileillustrator.model.SubPath
+import io.github.mhmmtbg.mobileillustrator.model.TextAlign
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
 import io.github.mhmmtbg.mobileillustrator.model.bounds
 import io.github.mhmmtbg.mobileillustrator.pdf.PngDecoder
@@ -507,11 +508,15 @@ object AiExporter {
         fun text(sb: StringBuilder, node: TextNode, ctm: Matrix) {
             // Özgün harf biçimleri varsa onlar yazılır: font gerekmez, görünüm her yerde aynıdır.
             val shapes = node.outline
-            val encoded = if (opt.outlineAllText || shapes != null) null else encode(node.text)
+            // Gerçek PDF metni yalnızca standart fontla, tek satır ve sola hizalı metinde yazılabilir; diğerlerinde
+            // (çok satır, hizalama, yüklenmiş font) görünümün bozulmaması için harfler yol olarak yazılır.
+            val plain = node.text.indexOf('\n') < 0 && node.align == TextAlign.Start && !node.fontFamily.startsWith("font:")
+            val encoded = if (opt.outlineAllText || shapes != null || !plain) null else encode(node.text)
             // Metnin özellikleri ayrıca saklanır: bu uygulama dosyayı geri açtığında metin düzenlenebilir kalır.
             sb.append("/MI << /N ").append(textString(node.name)).append(" /T /Text /S ").append(textString(node.text))
                 .append(" /F ").append(textString(node.fontFamily)).append(" /Z ").append(n6(node.fontSize))
                 .append(" /B ").append(node.bold).append(" /I ").append(node.italic)
+                .append(" /A /").append(node.align.name).append(" /LH ").append(n6(node.lineHeight))
                 .append(" /M [").append(mat(node.transform)).append("] >> BDC\n")
             sb.append("q\n")
             if (!node.transform.isIdentity) sb.append(cm(node.transform)).append('\n')

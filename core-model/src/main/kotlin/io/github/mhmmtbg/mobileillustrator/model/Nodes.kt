@@ -92,7 +92,12 @@ data class ImageNode(
     val image: ImageData,
 ) : Node
 
-/** Tek satır metin. Yerel uzayda başlangıç noktası (0,0) taban çizgisinin soludur. */
+enum class TextAlign { Start, Center, End }
+
+/**
+ * Metin; satırlar `\n` ile ayrılır. Yerel uzayda (0,0), ilk satırın taban çizgisi üzerindeki hizalama
+ * noktasıdır: sola hizalıda satırın başı, ortalıda ortası, sağa hizalıda sonu.
+ */
 data class TextNode(
     override val id: String = newId(),
     override val name: String = "Metin",
@@ -110,6 +115,9 @@ data class TextNode(
     val stroke: Stroke? = null,
     /** Biliniyorsa metnin gerçek genişliği (içe aktarmada fonttan hesaplanır); yoksa tahmin edilir. */
     val measuredWidth: Double? = null,
+    val align: TextAlign = TextAlign.Start,
+    /** Satır aralığı, font boyutunun katı olarak. */
+    val lineHeight: Double = 1.2,
     /**
      * Dosyadaki özgün fontla çizilmiş harf biçimleri (yerel uzayda). Doluysa metin bununla gösterilir,
      * böylece cihazda o font olmasa da görünüm aynı kalır. Metin düzenlenince düşer ve cihaz fontuna geçilir.
@@ -119,8 +127,10 @@ data class TextNode(
     /** Yerel uzaydaki yaklaşık kutu. */
     fun localBounds(): Rect {
         outline?.mapNotNull { it.bounds() }?.reduceOrNull(Rect::union)?.let { return it }
-        val w = measuredWidth ?: (text.length * fontSize * 0.55)
-        return Rect(0.0, -fontSize * 0.8, w, fontSize * 0.25)
+        val lines = text.split('\n')
+        val w = measuredWidth ?: ((lines.maxOfOrNull { it.length } ?: 0) * fontSize * 0.55)
+        val left = when (align) { TextAlign.Start -> 0.0; TextAlign.Center -> -w / 2; TextAlign.End -> -w }
+        return Rect(left, -fontSize * 0.8, left + w, fontSize * 0.25 + (lines.size - 1) * fontSize * lineHeight)
     }
 }
 

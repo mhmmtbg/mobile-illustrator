@@ -9,6 +9,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.mhmmtbg.mobileillustrator.App
 import io.github.mhmmtbg.mobileillustrator.model.Align
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.GradientSpec
@@ -21,6 +22,7 @@ import io.github.mhmmtbg.mobileillustrator.model.releaseClippingMask
 import io.github.mhmmtbg.mobileillustrator.model.withGradient
 import io.github.mhmmtbg.mobileillustrator.model.bounds
 import io.github.mhmmtbg.mobileillustrator.render.BooleanOp
+import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 import io.github.mhmmtbg.mobileillustrator.render.PathBoolean
 import io.github.mhmmtbg.mobileillustrator.model.AnchorRef
 import io.github.mhmmtbg.mobileillustrator.model.Document
@@ -126,8 +128,42 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         data class HandleDrag(val nodeId: String, val ref: AnchorRef, val outgoing: Boolean, val toLocal: Matrix, val origin: List<SubPath>) : Drag
     }
 
+    /** Yüklenmiş fontların adları (metin penceresinde listelenir). */
+    var fonts by mutableStateOf<List<String>>(emptyList())
+        private set
+
     init {
+        DocumentRenderer.customFonts = io.fonts::typeface
+        viewModelScope.launch {
+            fonts = withContext(Dispatchers.Default) { try { io.fonts.list() } catch (e: Throwable) { emptyList() } }
+        }
         restoreLastDocument()
+        // Önceki açılış çökmeyle bittiyse kaydı göster ve dosyayı sil (bir kez gösterilir).
+        viewModelScope.launch {
+            val report = withContext(Dispatchers.Default) {
+                try {
+                    val f = App.crashFile(getApplication())
+                    if (f.length() > 0) f.readText().take(20_000).also { f.delete() } else null
+                } catch (e: Throwable) {
+                    null
+                }
+            }
+            if (report != null) state = state.copy(crashReport = report)
+        }
+    }
+
+    fun dismissCrashReport() {
+        state = state.copy(crashReport = null)
+    }
+
+    fun importFont(uri: Uri) = background("Font yükleniyor…") {
+        val name = io.importFont(uri)
+        val list = io.fonts.list()
+        withContext(Dispatchers.Main) {
+            fonts = list
+            // Açık metin penceresi varsa yeni font seçili gelsin.
+            state = state.copy(textPrompt = state.textPrompt?.copy(fontFamily = DocumentRenderer.CUSTOM_FONT_PREFIX + name), message = "\"$name\" yüklendi")
+        }
     }
 
     private fun freshState(doc: Document, session: DocSession) =
@@ -1048,7 +1084,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun editSelectedText() {
         val id = state.selection.singleOrNull() ?: return
         val t = present.findNode(id) as? TextNode ?: return
-        state = state.copy(textPrompt = TextPrompt(t.id, Vec2.Zero, t.text, t.fontSize, t.fontFamily, t.bold, t.italic))
+        state = state.copy(textPrompt = TextPrompt(t.id, Vec2.Zero, t.text, t.fontSize, t.fontFamily, t.bold, t.italic, t.align, t.lineHeight))
     }
 
     /** Seçili metni yola çevirir (Illustrator'daki "Anahat Oluştur"); artık düğümleriyle düzenlenebilir. */
@@ -1077,14 +1113,16 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun confirmText(prompt: TextPrompt) {
         state = state.copy(textPrompt = null)
-        val text = prompt.text.replace('\n', ' ').trim()
-        if (text.isEmpty()) return
+        val text = prompt.text.trim('\n', ' ')
+        if (text.isBlank()) return
+        val title = text.substringBefore('\n').take(24)
+        val leading = prompt.lineHeight.coerceIn(0.5, 5.0)
         val size = prompt.fontSize.coerceIn(1.0, 5000.0)
         if (prompt.nodeId != null) {
             commit(
                 present.updateNode(prompt.nodeId) { n ->
                     (n as? TextNode)?.copy(
-                        text = text, name = text.take(24), fontSize = size, fontFamily = prompt.fontFamily,
+                        text = text, name = title, fontSize = size, fontFamily = prompt.fontFamily, align = prompt.align, lineHeight = leading,
                         // Metin değişti: özgün fontun harf biçimleri artık geçerli değil, cihaz fontuna geçilir.
                         bold = prompt.bold, italic = prompt.italic, measuredWidth = null, outline = null,
                     ) ?: n
@@ -1097,7 +1135,8 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val node = TextNode(
-            name = text.take(24), text = text, fontSize = size, fontFamily = prompt.fontFamily, bold = prompt.bold, italic = prompt.italic,
+            name = title, text = text, fontSize = size, fontFamily = prompt.fontFamily, bold = prompt.bold, italic = prompt.italic,
+            align = prompt.align, lineHeight = leading,
             fill = Paint.Solid(state.fill ?: Rgba.Black), transform = Matrix.translate(prompt.position.x, prompt.position.y),
             opacity = state.opacity,
         )

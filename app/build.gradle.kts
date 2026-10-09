@@ -16,10 +16,23 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = ciVersionCode
-        versionName = "0.1.$ciVersionCode"
+        versionName = "0.2.$ciVersionCode"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Mağaza imzası: anahtar depoya konmaz. CI'da gizli değişkenler tanımlıysa onlar kullanılır,
+    // yoksa sürüm derlemesi de depodaki ortak anahtarla imzalanır (mağazaya yüklenemez, ama kurulabilir).
+    val releaseStore = System.getenv("SIGNING_KEYSTORE_FILE")?.takeIf { it.isNotBlank() && file(it).exists() }
+
     signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
         // Depodaki sabit debug anahtarı: her CI derlemesi aynı imzayı taşır,
         // güncelleme için uygulamayı kaldırmak gerekmez. Gizli bir anahtar değildir.
         getByName("debug") {
@@ -35,8 +48,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Kullanılmayan kod atılır ve küçültülür: APK belirgin biçimde küçülür, açılış hızlanır.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName(if (releaseStore != null) "release" else "debug")
         }
     }
     compileOptions {
@@ -69,4 +85,9 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
+
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }
