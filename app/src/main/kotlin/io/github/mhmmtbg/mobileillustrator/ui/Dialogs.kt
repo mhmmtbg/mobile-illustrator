@@ -125,7 +125,8 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
         onDismissRequest = onDismiss,
         title = { Text(if (prompt.nodeId == null) tr("Metin ekle") else tr("Metni düzenle")) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Yükseklik sınırlı: klavye açıkken Tamam/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
+            Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(tr("Metin")) }, minLines = 2, maxLines = 6)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Boyut")) }, keyboardOptions = keys)
