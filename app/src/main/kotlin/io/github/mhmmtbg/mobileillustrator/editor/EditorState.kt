@@ -57,6 +57,16 @@ data class TextPrompt(
     val italic: Boolean = false,
 )
 
+/** Açık belgenin depodaki kimliği ve (varsa) bağlı olduğu dış dosya. */
+data class DocSession(
+    val id: String,
+    val linkUri: String? = null,
+    val linkFormat: ExportFormat? = null,
+    val linkWritable: Boolean = false,
+    /** Bağlı dosyaya henüz yazılmamış değişiklik var. */
+    val unsaved: Boolean = false,
+)
+
 data class EditorState(
     val history: History<Document>,
     /** Sürükleme sürerken gösterilen, henüz geçmişe yazılmamış belge. */
@@ -81,6 +91,9 @@ data class EditorState(
     /** İçe aktarmada birebir aktarılamayan özellikler; pencere olarak gösterilir. */
     val warnings: List<String> = emptyList(),
     val textPrompt: TextPrompt? = null,
+    val session: DocSession,
+    /** Doluysa "Belgelerim" ekranı açıktır. */
+    val gallery: List<StoredDocument>? = null,
 ) {
     val document: Document get() = preview ?: history.present
 }

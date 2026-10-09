@@ -42,8 +42,11 @@ object AiExporter {
         val outlineText: ((TextNode) -> List<SubPath>?)? = null,
         /** Tüm metinleri yola çevir (font farkı olmasın). */
         val outlineAllText: Boolean = false,
-        val creator: String = "Mobile Illustrator",
+        val creator: String = PRODUCER,
     )
+
+    /** Dosyanın bilgi sözlüğüne yazılan üretici adı; içe aktarırken "bu dosyayı biz mi yazdık" sorusunu yanıtlar. */
+    const val PRODUCER = "Mobile Illustrator"
 
     fun export(document: Document, options: Options = Options()): ByteArray = Writer(document, options).write()
 
@@ -86,7 +89,7 @@ object AiExporter {
             val catalogId = reserve()
             val pagesId = reserve()
             resourcesId = reserve()
-            val infoId = add("<< /Title ${textString(doc.name)} /Creator ${textString(opt.creator)} /Producer ${textString(opt.creator)} >>")
+            val infoId = add("<< /Title ${textString(doc.name)} /Creator ${textString(opt.creator)} /Producer ${textString(PRODUCER)} >>")
 
             val layerIds = doc.layers.map { add("<< /Type /OCG /Name ${textString(it.name)} >>") }
 

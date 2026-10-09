@@ -8,6 +8,9 @@ class PdfLexer(val data: ByteArray, var pos: Int = 0, private val end: Int = dat
 
     val atEnd: Boolean get() = pos >= end
 
+    /** İç içe dizi/sözlük derinliği; kötü niyetli "[[[[..." girdilerinde yığının taşmasını önler. */
+    private var depth = 0
+
     private fun isSpace(b: Int) = b == 0 || b == 9 || b == 10 || b == 12 || b == 13 || b == 32
     private fun isDelim(b: Int) =
         b == '('.code || b == ')'.code || b == '<'.code || b == '>'.code || b == '['.code || b == ']'.code ||
@@ -186,6 +189,17 @@ class PdfLexer(val data: ByteArray, var pos: Int = 0, private val end: Int = dat
     private fun readArray(): PdfArr {
         pos++
         val items = ArrayList<PdfObj>()
+        if (depth >= MAX_DEPTH) return PdfArr(items)
+        depth++
+        try {
+            readArrayItems(items)
+        } finally {
+            depth--
+        }
+        return PdfArr(items)
+    }
+
+    private fun readArrayItems(items: ArrayList<PdfObj>) {
         while (true) {
             val o = next() ?: break
             if (o is PdfOp) {
@@ -194,12 +208,22 @@ class PdfLexer(val data: ByteArray, var pos: Int = 0, private val end: Int = dat
             }
             items += o
         }
-        return PdfArr(items)
     }
 
     private fun readDict(): PdfDict {
         pos += 2
         val map = LinkedHashMap<String, PdfObj>()
+        if (depth >= MAX_DEPTH) return PdfDict(map)
+        depth++
+        try {
+            readDictItems(map)
+        } finally {
+            depth--
+        }
+        return PdfDict(map)
+    }
+
+    private fun readDictItems(map: LinkedHashMap<String, PdfObj>) {
         while (true) {
             val k = next() ?: break
             if (k is PdfOp && k.name == ">>") break
@@ -214,13 +238,14 @@ class PdfLexer(val data: ByteArray, var pos: Int = 0, private val end: Int = dat
             }
             map[k.name] = v
         }
-        return PdfDict(map)
     }
 
     /** Verilen bayt dizisinin [from] sonrasındaki ilk konumu; yoksa -1. */
     fun indexOf(pattern: ByteArray, from: Int): Int = indexOf(data, pattern, from, end)
 
     companion object {
+        private const val MAX_DEPTH = 96
+
         fun indexOf(data: ByteArray, pattern: ByteArray, from: Int, end: Int = data.size): Int {
             val last = end - pattern.size
             var i = maxOf(from, 0)

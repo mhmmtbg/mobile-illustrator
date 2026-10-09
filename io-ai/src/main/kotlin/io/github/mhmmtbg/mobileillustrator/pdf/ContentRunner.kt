@@ -117,6 +117,18 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         }
     }
 
+    /** Kötü niyetli ya da bozuk dosyalara karşı bütçeler. Aşılırsa okuma durur, o ana kadarki içerik korunur. */
+    private var emitted = 0
+    private var formCalls = 0
+    private var imagePixels = 0L
+    private var stopped = false
+    private val deadline = System.nanoTime() + MAX_SECONDS * 1_000_000_000L
+
+    private fun stop(reason: String) {
+        if (!stopped) sink.warn(reason)
+        stopped = true
+    }
+
     private var gs = GState()
     private val stack = ArrayList<GState>()
     private val containers = ArrayList<Container>()
@@ -157,6 +169,11 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
     }
 
     private fun emit(item: Item) {
+        if (stopped) return
+        if (++emitted > MAX_NODES) {
+            stop("Dosya çok fazla nesne içeriyor; ilk $MAX_NODES nesne açıldı")
+            return
+        }
         flushText()
         if (containers.isNotEmpty()) containers.last().items += item else sink.emit(item)
     }
@@ -169,7 +186,12 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         /** Bu akışta açılan işaretli içerik blokları: 0 diğer, 1 üst katman, 2 iç içe kap. */
         val marks = ArrayList<Int>()
         val stackBase = stack.size
-        while (true) {
+        var ticks = 0
+        while (!stopped) {
+            if (++ticks and 0x3FF == 0 && System.nanoTime() > deadline) {
+                stop("Dosya çok uzun sürdüğü için yarıda kesildi; bir kısmı açıldı")
+                break
+            }
             val o = lx.next() ?: break
             if (o !is PdfOp) {
                 args += o
@@ -203,7 +225,7 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         marks: ArrayList<Int>,
     ) {
         when (name) {
-            "q" -> stack += gs.copy()
+            "q" -> if (stack.size < 4096) stack += gs.copy()
             "Q" -> { flushText(); if (stack.isNotEmpty()) gs = stack.removeAt(stack.size - 1) }
             "cm" -> gs.ctm = gs.ctm * Matrix(n(a, 0), n(a, 1), n(a, 2), n(a, 3), n(a, 4), n(a, 5))
             "w" -> gs.lineWidth = n(a, 0)
@@ -580,6 +602,10 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         when (file.name(xo.dict["Subtype"])) {
             "Form" -> {
                 if (depth > 24) return
+                if (++formCalls > MAX_FORM_CALLS) {
+                    stop("Dosyada aşırı sayıda iç içe çizim var; bir kısmı açıldı")
+                    return
+                }
                 val m = file.numbers(xo.dict["Matrix"])?.takeIf { it.size >= 6 }?.let { Matrix(it[0], it[1], it[2], it[3], it[4], it[5]) }
                     ?: Matrix.Identity
                 val formRes = file.dict(xo.dict["Resources"]) ?: res
@@ -637,8 +663,13 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         val w = file.int(xo.dict["Width"]) ?: return
         val h = file.int(xo.dict["Height"]) ?: return
         if (w <= 0 || h <= 0) return
-        if (w.toLong() * h > 60_000_000L) {
+        if (w.toLong() * h > MAX_IMAGE_PIXELS) {
             sink.warn("Çok büyük bir görsel atlandı (${w}x$h)")
+            return
+        }
+        imagePixels += w.toLong() * h
+        if (imagePixels > MAX_TOTAL_IMAGE_PIXELS) {
+            sink.warn("Görsellerin toplamı bellek sınırını aştığı için bazıları atlandı")
             return
         }
         val data = try { ImageDecoder.decode(file, xo, w, h, gs.fillCs.toRgb(gs.fillColor), sink) } catch (e: Exception) { null }
@@ -776,5 +807,13 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
         )
         val leaf = Leaf(node, t.clip)
         if (containers.isNotEmpty()) containers.last().items += leaf else sink.emit(leaf)
+    }
+
+    companion object {
+        const val MAX_NODES = 400_000
+        const val MAX_FORM_CALLS = 100_000
+        const val MAX_IMAGE_PIXELS = 40_000_000L
+        const val MAX_TOTAL_IMAGE_PIXELS = 160_000_000L
+        const val MAX_SECONDS = 90L
     }
 }

@@ -168,7 +168,22 @@ try_export() {
   if [ -n "$f" ]; then adb pull "$f" "$OUT/disa-aktarim.$2" > /dev/null || true; else echo "::warning title=Duman testi::Kaydedilen dosya bulunamadı ($2)"; fi
   alive "dışa aktarma $2"
 }
-try_export "Illustrator (.ai) olarak kaydet" ai
+try_export "Farklı kaydet (.ai)" ai
+# Farklı kaydet'ten sonra "Kaydet" sormadan aynı dosyanın üzerine yazmalı.
+if [ -f "$OUT/disa-aktarim.ai" ]; then
+  before=$(stat -c %s "$OUT/disa-aktarim.ai")
+  tap "Elips"
+  adb shell input swipe $((W * 40 / 100)) $((H * 14 / 100)) $((W * 55 / 100)) $((H * 19 / 100)) 400
+  tap "Dosya menüsü"
+  tap "Kaydet"
+  sleep 4
+  wait_for "Dosya menüsü"
+  f=$(adb shell "find /sdcard/Download /sdcard/Documents -name 'Gopher*.ai' 2>/dev/null" | tr -d '\r' | head -n 1)
+  adb pull "$f" "$OUT/disa-aktarim.ai" > /dev/null
+  after=$(stat -c %s "$OUT/disa-aktarim.ai")
+  [ "$before" != "$after" ] || fail "Kaydet bağlı dosyayı güncellemedi (boyut aynı: $before)"
+  tap "Seçim"
+fi
 try_export "PDF dışa aktar" pdf
 try_export "SVG dışa aktar" svg
 try_export "PNG dışa aktar" png
@@ -198,6 +213,29 @@ tap "Paneli kapat"
 tap "Ekrana sığdır"
 shot 12-otomatik-kayit
 alive "otomatik kayıt"
+
+# 9) Belgelerim: yeni belge açmak eskisini silmemeli
+tap "Dosya menüsü"
+tap "Yeni belge…"
+tap "Oluştur"
+sleep 3
+wait_for "Adsız"
+tap "Dikdörtgen"
+adb shell input swipe $((W * 30 / 100)) $((H * 40 / 100)) $((W * 60 / 100)) $((H * 55 / 100)) 400
+tap "Dosya menüsü"
+tap "Belgelerim"
+wait_for "Belgelerim ekranı"
+has "Belge: Gopher" || fail "yeni belge açınca önceki belge kayboldu"
+has "Belge: Adsız" || fail "yeni belge galeride yok"
+shot 13-belgelerim
+tap "Belge: Gopher"
+sleep 3
+wait_gone "Belgelerim ekranı"
+wait_for "Katmanlar"
+tap "Katmanlar"
+has "Pallette" || fail "galeriden açılan belge eksik"
+tap "Paneli kapat"
+alive "belgelerim"
 
 if adb logcat -d -b crash | grep -q "$PKG"; then fail "Çökme kaydı bulundu"; fi
 echo "Duman testi geçti"

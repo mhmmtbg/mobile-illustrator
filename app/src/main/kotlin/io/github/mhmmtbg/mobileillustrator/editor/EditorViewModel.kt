@@ -82,7 +82,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private val io = DocumentIo(app)
 
-    var state by mutableStateOf(freshState(Document.blank()))
+    var state by mutableStateOf(freshState(Document.blank(), DocSession(io.store.newId())))
         private set
 
     var viewport by mutableStateOf(Viewport())
@@ -110,10 +110,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        restoreAutosave()
+        restoreLastDocument()
     }
 
-    private fun freshState(doc: Document) = EditorState(history = History(present = doc), activeLayerId = doc.layers.last().id)
+    private fun freshState(doc: Document, session: DocSession) =
+        EditorState(history = History(present = doc), activeLayerId = doc.layers.last().id, session = session)
 
     private val present: Document get() = state.history.present
 
@@ -161,7 +162,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun commit(doc: Document, then: (EditorState) -> EditorState = { it }) {
         val changed = doc != present
-        state = then(state.copy(history = state.history.push(doc), preview = null))
+        var next = state.copy(history = state.history.push(doc), preview = null)
+        // Bağlı bir dosya varsa bu değişiklik henüz ona yazılmadı.
+        if (changed && next.session.linkUri != null && !next.session.unsaved) next = next.copy(session = next.session.copy(unsaved = true))
+        state = then(next)
         if (changed) scheduleAutosave()
     }
 
@@ -189,6 +193,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             selection = state.selection.filterTo(HashSet()) { doc.findNode(it) != null },
             nodeEdit = state.nodeEdit?.takeIf { doc.findNode(it.nodeId) is PathNode }?.copy(anchor = null),
             activeLayerId = if (doc.findLayer(state.activeLayerId) != null) state.activeLayerId else doc.layers.last().id,
+            session = if (state.session.linkUri != null) state.session.copy(unsaved = true) else state.session,
         )
         scheduleAutosave()
     }
@@ -862,35 +867,148 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun suggestedFileName(format: ExportFormat): String =
         present.name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Adsiz" } + "." + format.extension
 
-    fun newDocument(width: Double, height: Double) {
-        if (state.pen != null) cancelPen()
-        load(Document.blank(width.coerceIn(1.0, 20000.0), height.coerceIn(1.0, 20000.0)), emptyList())
+    /** Bağlı dosyanın üzerine sorulmadan yazılabilir mi? Değilse arayüz "Farklı kaydet" penceresini açar. */
+    val canSaveInPlace: Boolean get() = state.session.linkUri != null && state.session.linkWritable
+
+    fun renameDocument(name: String) {
+        val clean = name.trim().ifEmpty { return }
+        commit(present.copy(name = clean))
     }
 
-    private fun load(doc: Document, warnings: List<String>) {
+    /** Belgeyi ekrana yükler. [stored] doluysa belge depodan geldi demektir ve yeniden yazılması gerekmez. */
+    private fun load(doc: Document, warnings: List<String>, session: DocSession, stored: Boolean) {
         drag = null
-        state = freshState(doc).copy(warnings = warnings, layersOpen = state.layersOpen)
+        state = freshState(doc, session).copy(warnings = warnings)
+        storedDoc = if (stored) doc else null
         fitPending = true
         if (canvasSize.width > 0) { fitPending = false; fitToScreen() }
-        scheduleAutosave()
+        if (!stored) scheduleAutosave()
     }
 
-    fun open(uri: Uri) = background("Açılıyor…") {
-        val r = io.open(uri)
-        withContext(Dispatchers.Main) { load(r.document, r.warnings) }
+    fun newDocument(width: Double, height: Double) {
+        if (state.pen != null) finishPen()
+        background("Hazırlanıyor…") {
+            persistNow()
+            withContext(Dispatchers.Main) {
+                load(Document.blank(width.coerceIn(1.0, 20000.0), height.coerceIn(1.0, 20000.0)), emptyList(), DocSession(io.store.newId()), stored = false)
+            }
+        }
     }
 
-    fun openSample() = background("Açılıyor…") {
-        val r = io.openAsset("samples/gopher.ai", "Gopher")
-        withContext(Dispatchers.Main) { load(r.document, r.warnings) }
+    fun open(uri: Uri) {
+        if (state.pen != null) finishPen()
+        background("Açılıyor…") {
+            val opened = io.open(uri)
+            io.persistAccess(uri)
+            persistNow()
+            val session = DocSession(
+                id = io.store.newId(),
+                linkUri = uri.toString(),
+                linkFormat = opened.format,
+                // Başka programın dosyasının üzerine sorulmadan yazılmaz: ilk kayıtta yeni dosya adı istenir.
+                linkWritable = opened.result.writtenByThisApp,
+            )
+            withContext(Dispatchers.Main) { load(opened.result.document, opened.result.warnings, session, stored = false) }
+        }
     }
 
-    fun export(uri: Uri, format: ExportFormat) {
+    fun openSample() {
+        if (state.pen != null) finishPen()
+        background("Açılıyor…") {
+            val opened = io.openAsset("samples/gopher.ai", "Gopher")
+            persistNow()
+            withContext(Dispatchers.Main) { load(opened.result.document, opened.result.warnings, DocSession(io.store.newId()), stored = false) }
+        }
+    }
+
+    // ---- Belgelerim ---------------------------------------------------------
+
+    fun showGallery() {
+        if (state.pen != null) finishPen()
+        background("Belgeler yükleniyor…") {
+            persistNow()
+            val list = io.store.list()
+            withContext(Dispatchers.Main) { state = state.copy(gallery = list) }
+        }
+    }
+
+    fun hideGallery() {
+        state = state.copy(gallery = null)
+    }
+
+    fun openStored(id: String) {
+        if (id == state.session.id) {
+            hideGallery()
+            return
+        }
+        background("Açılıyor…") {
+            persistNow()
+            val meta = io.store.read(id) ?: throw java.io.IOException("Belge bulunamadı")
+            val doc = io.loadFromStore(id)
+            io.store.setCurrent(id)
+            withContext(Dispatchers.Main) {
+                load(doc, emptyList(), DocSession(meta.id, meta.linkUri, meta.linkFormat, meta.linkWritable, meta.unsaved), stored = true)
+            }
+        }
+    }
+
+    fun deleteStored(id: String) = background("Siliniyor…") {
+        val wasCurrent = id == state.session.id
+        if (wasCurrent) autosaveJob?.cancel()
+        io.store.delete(id)
+        val list = io.store.list()
+        withContext(Dispatchers.Main) {
+            if (wasCurrent) load(Document.blank(), emptyList(), DocSession(io.store.newId()), stored = false)
+            state = state.copy(gallery = list)
+        }
+    }
+
+    // ---- Kaydetme -----------------------------------------------------------
+
+    /** Bağlı dosyanın üzerine yazar. Yalnızca [canSaveInPlace] doğruysa çağrılmalıdır. */
+    fun save() {
+        val link = state.session.linkUri ?: return
+        val format = state.session.linkFormat ?: ExportFormat.Ai
         if (state.pen != null) finishPen()
         val doc = present
         background("Kaydediliyor…") {
+            try {
+                io.export(doc, Uri.parse(link), format)
+            } catch (e: java.io.IOException) {
+                throw java.io.IOException("${e.message}. \"Farklı kaydet\" ile yeni bir dosyaya kaydedin.")
+            }
+            withContext(Dispatchers.Main) {
+                state = state.copy(session = state.session.copy(unsaved = present !== doc), message = "Kaydedildi")
+            }
+            persistMeta()
+        }
+    }
+
+    /** "Farklı kaydet": yeni dosyaya yazar ve belgeyi artık o dosyaya bağlar. */
+    fun saveAs(uri: Uri) {
+        if (state.pen != null) finishPen()
+        val doc = present
+        background("Kaydediliyor…") {
+            io.export(doc, uri, ExportFormat.Ai)
+            io.persistAccess(uri)
+            withContext(Dispatchers.Main) {
+                state = state.copy(
+                    session = state.session.copy(linkUri = uri.toString(), linkFormat = ExportFormat.Ai, linkWritable = true, unsaved = present !== doc),
+                    message = "Kaydedildi",
+                )
+            }
+            persistNow()
+            persistMeta()
+        }
+    }
+
+    /** Başka biçimde bir kopya yazar; belgenin bağlı olduğu dosya değişmez. */
+    fun export(uri: Uri, format: ExportFormat) {
+        if (state.pen != null) finishPen()
+        val doc = present
+        background("Dışa aktarılıyor…") {
             io.export(doc, uri, format)
-            withContext(Dispatchers.Main) { state = state.copy(message = "Kaydedildi") }
+            withContext(Dispatchers.Main) { state = state.copy(message = "Dışa aktarıldı") }
         }
     }
 
@@ -927,43 +1045,87 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- Otomatik kayıt -----------------------------------------------------
+
+    /** Depoya en son yazılan belge; aynı nesneyse yeniden yazmaya gerek yoktur. */
+    @Volatile
+    private var storedDoc: Document? = null
+    private val saveLock = Any()
+
+    private fun metaOf(session: DocSession, doc: Document) = StoredDocument(
+        id = session.id, name = doc.name, modified = System.currentTimeMillis(), linkUri = session.linkUri,
+        linkFormat = session.linkFormat, linkWritable = session.linkWritable, unsaved = session.unsaved,
+        thumbnail = io.store.thumbFile(session.id),
+    )
+
+    /** Hiç dokunulmamış boş belge depoya yazılmaz; galeri boş "Adsız"larla dolmasın. */
+    private fun worthStoring(s: EditorState): Boolean =
+        io.store.exists(s.session.id) || s.history.canUndo || s.session.linkUri != null || s.history.present.layers.any { it.children.isNotEmpty() }
+
+    /** Bekleyen değişiklikleri hemen depoya yazar. Arka plan iş parçacığından çağrılır. */
+    private fun persistNow() {
+        autosaveJob?.cancel()
+        val s = state
+        val doc = s.history.present
+        if (doc === storedDoc || !worthStoring(s)) return
+        synchronized(saveLock) {
+            io.saveToStore(metaOf(s.session, doc), doc)
+            io.store.setCurrent(s.session.id)
+            storedDoc = doc
+        }
+    }
+
+    private fun persistMeta() {
+        val s = state
+        if (io.store.exists(s.session.id)) io.store.writeMeta(metaOf(s.session, s.history.present))
+    }
+
     private fun scheduleAutosave() {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(1500)
-            val doc = present
             withContext(Dispatchers.Default) {
-                try { io.autosave(doc) } catch (e: Throwable) { /* yer yoksa sessizce geç */ }
+                try { persistNow() } catch (e: Throwable) { /* yer yoksa sessizce geç; bir sonraki değişiklikte yeniden denenir */ }
             }
         }
     }
 
-    private fun restoreAutosave() {
-        if (!io.hasAutosave()) return
+    private class Restored(val meta: StoredDocument?, val document: Document?, val others: List<StoredDocument>?)
+
+    private fun restoreLastDocument() {
         state = state.copy(busy = "Son çalışma açılıyor…")
         viewModelScope.launch {
-            val doc = withContext(Dispatchers.Default) {
-                try { io.loadAutosave() } catch (e: Throwable) { null }
+            val restored = withContext(Dispatchers.Default) {
+                try {
+                    io.store.migrateLegacy()
+                    val id = io.store.current()
+                    val meta = id?.let { io.store.read(it) }
+                    if (meta != null) Restored(meta, io.loadFromStore(meta.id), null) else Restored(null, null, io.store.list())
+                } catch (e: Throwable) {
+                    Restored(null, null, try { io.store.list() } catch (e2: Throwable) { emptyList() })
+                }
             }
             state = state.copy(busy = null)
             // Kullanıcı bu arada bir şey açtıysa ya da çizdiyse üzerine yazma.
-            if (doc != null && !state.history.canUndo && present.layers.all { it.children.isEmpty() }) {
-                drag = null
-                state = freshState(doc)
-                fitPending = true
-                if (canvasSize.width > 0) { fitPending = false; fitToScreen() }
+            val untouched = !state.history.canUndo && present.layers.all { it.children.isEmpty() } && state.session.linkUri == null
+            val meta = restored.meta
+            val doc = restored.document
+            if (!untouched) return@launch
+            if (meta != null && doc != null) {
+                load(doc, emptyList(), DocSession(meta.id, meta.linkUri, meta.linkFormat, meta.linkWritable, meta.unsaved), stored = true)
+            } else if (!restored.others.isNullOrEmpty()) {
+                // Son belge açılamadı ama başkaları var: galeriyi göster.
+                state = state.copy(gallery = restored.others)
             }
         }
     }
 
-    /** Uygulama arka plana giderken bekleyen otomatik kaydı hemen yaz. */
+    /** Uygulama arka plana giderken bekleyen otomatik kaydı hemen yaz (ekran kapanınca iptal olmayan kapsamda). */
     fun flushAutosave() {
-        val job = autosaveJob ?: return
-        if (!job.isActive) return
-        job.cancel()
-        val doc = present
-        viewModelScope.launch(Dispatchers.Default) {
-            try { io.autosave(doc) } catch (e: Throwable) { }
+        backgroundScope.launch {
+            try { persistNow() } catch (e: Throwable) { }
         }
     }
+
+    private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
 }

@@ -1,5 +1,6 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -101,12 +102,22 @@ fun EditorScreen(vm: EditorViewModel) {
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::open) }
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(vm::placeImage) }
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         uri?.let { vm.export(it, exportFormat) }
     }
+    val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri -> uri?.let(vm::saveAs) }
     fun export(format: ExportFormat) {
         exportFormat = format
-        saveLauncher.launch(vm.suggestedFileName(format))
+        exportLauncher.launch(vm.suggestedFileName(format))
+    }
+    fun saveAs() = saveAsLauncher.launch(vm.suggestedFileName(ExportFormat.Ai))
+    // Başka programın dosyası açıksa üzerine yazılmaz; ilk kayıtta yeni dosya adı sorulur.
+    fun save() = if (vm.canSaveInPlace) vm.save() else saveAs()
+    var renamingDocument by remember { mutableStateOf(false) }
+
+    // Geri tuşu önce açık panelleri kapatır.
+    BackHandler(enabled = state.gallery != null || state.layersOpen) {
+        if (state.gallery != null) vm.hideGallery() else vm.toggleLayersPanel()
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(AppColors.Panel)) {
@@ -118,6 +129,9 @@ fun EditorScreen(vm: EditorViewModel) {
                 onNew = { showNew = true },
                 onOpen = { openLauncher.launch(arrayOf("*/*")) },
                 onPlaceImage = { imageLauncher.launch("image/*") },
+                onSave = ::save,
+                onSaveAs = ::saveAs,
+                onRename = { renamingDocument = true },
                 onExport = ::export,
             )
             Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -161,6 +175,20 @@ fun EditorScreen(vm: EditorViewModel) {
         }
     }
 
+    state.gallery?.let { docs ->
+        GalleryScreen(
+            documents = docs,
+            currentId = state.session.id,
+            onOpen = vm::openStored,
+            onDelete = vm::deleteStored,
+            onNew = { vm.hideGallery(); showNew = true },
+            onImport = { vm.hideGallery(); openLauncher.launch(arrayOf("*/*")) },
+            onClose = vm::hideGallery,
+        )
+    }
+    if (renamingDocument) {
+        NameDialog("Belgeyi adlandır", state.history.present.name, onDismiss = { renamingDocument = false }) { renamingDocument = false; vm.renameDocument(it) }
+    }
     if (showNew) NewDocumentDialog(onDismiss = { showNew = false }) { w, h -> showNew = false; vm.newDocument(w, h) }
     if (showPicker) {
         val current = if (state.paintTarget == PaintTarget.Stroke) state.stroke else state.fill
@@ -195,6 +223,9 @@ private fun TopBar(
     onNew: () -> Unit,
     onOpen: () -> Unit,
     onPlaceImage: () -> Unit,
+    onSave: () -> Unit,
+    onSaveAs: () -> Unit,
+    onRename: () -> Unit,
     onExport: (ExportFormat) -> Unit,
 ) {
     val state = vm.state
@@ -212,22 +243,26 @@ private fun TopBar(
                 @Composable
                 fun item(label: String, action: () -> Unit) =
                     DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; action() })
+                item("Belgelerim") { vm.showGallery() }
                 item("Yeni belge…", onNew)
                 item("Aç… (.ai, .pdf, .svg)", onOpen)
                 item("Örnek dosyayı aç") { vm.openSample() }
-                item("Görsel yerleştir…", onPlaceImage)
                 HorizontalDivider()
-                item("Illustrator (.ai) olarak kaydet") { onExport(ExportFormat.Ai) }
+                item("Kaydet", onSave)
+                item("Farklı kaydet (.ai)", onSaveAs)
                 item("PDF dışa aktar") { onExport(ExportFormat.Pdf) }
                 item("SVG dışa aktar") { onExport(ExportFormat.Svg) }
                 item("PNG dışa aktar") { onExport(ExportFormat.Png) }
                 HorizontalDivider()
+                item("Görsel yerleştir…", onPlaceImage)
+                item("Belgeyi adlandır…", onRename)
                 item("Tümünü seç") { vm.selectAll() }
             }
         }
+        // Bağlı dosyaya yazılmamış değişiklik varsa adın başında nokta görünür.
         Text(
-            state.document.name,
-            Modifier.padding(start = 4.dp).weight(1f),
+            (if (state.session.unsaved) "● " else "") + state.document.name,
+            Modifier.padding(start = 4.dp).weight(1f).semantics { contentDescription = "Belge adı: " + state.document.name + if (state.session.unsaved) ", kaydedilmedi" else "" },
             style = MaterialTheme.typography.titleSmall,
             color = AppColors.OnPanel,
             maxLines = 1,

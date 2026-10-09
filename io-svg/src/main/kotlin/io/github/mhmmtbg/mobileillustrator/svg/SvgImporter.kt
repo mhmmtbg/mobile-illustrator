@@ -44,8 +44,11 @@ object SvgImporter {
 
     fun import(bytes: ByteArray, name: String): ImportResult {
         val root = try {
+            if (bytes.size > 96 * 1024 * 1024) throw ImportException("SVG dosyası çok büyük")
             val f = DocumentBuilderFactory.newInstance()
             f.isNamespaceAware = false
+            // Varlık açılımı bombalarına ("billion laughs") karşı ayrıştırıcının kendi sınırları
+            try { f.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true) } catch (e: Exception) { /* desteklenmiyor */ }
             for (feature in listOf(
                 "http://apache.org/xml/features/nonvalidating/load-external-dtd",
                 "http://xml.org/sax/features/external-general-entities",
@@ -56,12 +59,34 @@ object SvgImporter {
             val b = f.newDocumentBuilder()
             // Dış DTD ve varlıklar asla indirilmez.
             b.setEntityResolver { _, _ -> InputSource(StringReader("")) }
+            // Ayrıştırma hataları istisna olarak döner; konsola yazılmasın.
+            b.setErrorHandler(object : org.xml.sax.ErrorHandler {
+                override fun warning(e: org.xml.sax.SAXParseException) {}
+                override fun error(e: org.xml.sax.SAXParseException) {}
+                override fun fatalError(e: org.xml.sax.SAXParseException) { throw e }
+            })
             b.parse(ByteArrayInputStream(bytes)).documentElement
+        } catch (e: ImportException) {
+            throw e
         } catch (e: Exception) {
             throw ImportException("SVG dosyası okunamadı: ${e.message ?: "geçersiz XML"}")
+        } catch (e: StackOverflowError) {
+            throw ImportException("SVG dosyası çok derin iç içe yapı içeriyor")
+        } catch (e: OutOfMemoryError) {
+            throw ImportException("SVG dosyası belleğe sığmayacak kadar büyük")
         }
         if (root == null || root.tagName.substringAfter(':') != "svg") throw ImportException("Dosya bir SVG değil")
-        return Reader(root, name).run()
+        try {
+            return Reader(root, name).run()
+        } catch (e: ImportException) {
+            throw e
+        } catch (e: OutOfMemoryError) {
+            throw ImportException("Dosya belleğe sığmayacak kadar büyük ya da karmaşık")
+        } catch (e: StackOverflowError) {
+            throw ImportException("Dosya çok derin iç içe yapı içeriyor")
+        } catch (e: RuntimeException) {
+            throw ImportException("SVG dosyası bozuk görünüyor ve okunamadı")
+        }
     }
 
     private class Style(
@@ -93,6 +118,8 @@ object SvgImporter {
         var viewW = 100.0
         var viewH = 100.0
         var useDepth = 0
+        var nodeDepth = 0
+        var nodeCount = 0
 
         fun run(): ImportResult {
             index(root)
@@ -297,6 +324,20 @@ object SvgImporter {
         // ---- Düğümler -----------------------------------------------------
 
         private fun node(e: Element, parent: Style): Node? {
+            if (nodeDepth > 256 || nodeCount > 400_000) {
+                warnings += "Dosya çok büyük ya da çok derin; bir kısmı açıldı"
+                return null
+            }
+            nodeCount++
+            nodeDepth++
+            try {
+                return nodeInner(e, parent)
+            } finally {
+                nodeDepth--
+            }
+        }
+
+        private fun nodeInner(e: Element, parent: Style): Node? {
             val tag = e.tagName.substringAfter(':')
             if (tag in Skipped) return null
             val props = declarations(e)

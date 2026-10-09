@@ -53,12 +53,20 @@ object AiImporter {
                 throw ImportException("Dosya bir Illustrator ya da PDF dosyası gibi görünmüyor.")
             AiFormat.Container.Pdf -> {}
         }
-        val file = try {
-            PdfFile(bytes)
+        // Dosya güvenilmez girdidir: hangi hata çıkarsa çıksın uygulama çökmemeli, anlaşılır bir ileti dönmeli.
+        try {
+            return Importer(PdfFile(bytes), name).run()
+        } catch (e: ImportException) {
+            throw e
         } catch (e: PdfException) {
             throw ImportException(e.message ?: "Dosya okunamadı")
+        } catch (e: OutOfMemoryError) {
+            throw ImportException("Dosya belleğe sığmayacak kadar büyük ya da karmaşık")
+        } catch (e: StackOverflowError) {
+            throw ImportException("Dosya çok derin iç içe yapı içeriyor")
+        } catch (e: RuntimeException) {
+            throw ImportException("Dosya bozuk görünüyor ve okunamadı")
         }
-        return Importer(file, name).run()
     }
 
     private class Bucket(val key: PdfRef?, val info: LayerInfo) {
@@ -176,7 +184,12 @@ object AiImporter {
                 }
             }.ifEmpty { listOf(Layer(name = "Katman 1")) }
 
-            return ImportResult(Document(name = name, artboards = artboards, layers = layers), warnings.toList())
+            val producer = file.string(file.dict(file.trailer["Info"])?.get("Producer"))?.text()
+            return ImportResult(
+                Document(name = name, artboards = artboards, layers = layers),
+                warnings.toList(),
+                writtenByThisApp = producer == AiExporter.PRODUCER,
+            )
         }
 
         private fun collectPages(node: PdfDict?, res: PdfDict?, box: DoubleArray?, out: ArrayList<Page>, seen: HashSet<PdfDict>, depth: Int) {

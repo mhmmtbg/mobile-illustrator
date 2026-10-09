@@ -1,6 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
 import android.app.Application
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -18,18 +19,18 @@ import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
 import io.github.mhmmtbg.mobileillustrator.svg.SvgExporter
 import io.github.mhmmtbg.mobileillustrator.svg.SvgImporter
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.IOException
 
 /** Dosya okuma ve yazma. Tüm işlevler arka plan iş parçacığında çağrılmalıdır. */
 class DocumentIo(private val app: Application) {
 
-    private val autosaveFile get() = File(app.filesDir, "autosave.ai")
-    private val autosaveName get() = File(app.filesDir, "autosave.name")
+    val store = DocumentStore(app.filesDir)
 
     private val exportOptions = AiExporter.Options(outlineText = { TextOutliner.outline(it) })
 
-    fun open(uri: Uri): ImportResult {
+    class Opened(val result: ImportResult, val format: ExportFormat)
+
+    fun open(uri: Uri): Opened {
         val name = displayName(uri)
         val bytes = try {
             app.contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -41,14 +42,17 @@ class DocumentIo(private val app: Application) {
         return parse(bytes, name)
     }
 
-    fun openAsset(path: String, name: String): ImportResult =
-        parse(app.assets.open(path).use { it.readBytes() }, "$name.ai")
+    fun openAsset(path: String, name: String): Opened = parse(app.assets.open(path).use { it.readBytes() }, "$name.ai")
 
-    private fun parse(bytes: ByteArray, fileName: String): ImportResult {
+    private fun parse(bytes: ByteArray, fileName: String): Opened {
         val base = fileName.substringBeforeLast('.').ifBlank { "Adsız" }
         val looksSvg = fileName.endsWith(".svg", ignoreCase = true) || SvgImporter.sniff(bytes)
         try {
-            return if (looksSvg) SvgImporter.import(bytes, base) else AiImporter.import(bytes, base)
+            return if (looksSvg) {
+                Opened(SvgImporter.import(bytes, base), ExportFormat.Svg)
+            } else {
+                Opened(AiImporter.import(bytes, base), if (fileName.endsWith(".pdf", ignoreCase = true)) ExportFormat.Pdf else ExportFormat.Ai)
+            }
         } catch (e: ImportException) {
             throw IOException(e.message)
         } catch (e: OutOfMemoryError) {
@@ -71,21 +75,49 @@ class DocumentIo(private val app: Application) {
         return uri.lastPathSegment?.substringAfterLast('/') ?: "Adsız"
     }
 
-    fun export(doc: Document, uri: Uri, format: ExportFormat) {
-        val bytes = when (format) {
-            ExportFormat.Ai, ExportFormat.Pdf -> AiExporter.export(doc, exportOptions)
-            ExportFormat.Svg -> SvgExporter.export(doc).toByteArray(Charsets.UTF_8)
-            ExportFormat.Png -> renderPng(doc)
+    /**
+     * Dosyaya kalıcı erişim ister; böylece uygulama yeniden açıldığında da "Kaydet" çalışır.
+     * @return yazma izni de alınabildiyse `true`.
+     */
+    fun persistAccess(uri: Uri): Boolean {
+        if (uri.scheme != "content") return uri.scheme == "file"
+        val rw = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        return try {
+            app.contentResolver.takePersistableUriPermission(uri, rw)
+            true
+        } catch (e: Exception) {
+            try {
+                app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e2: Exception) {
+                // Kalıcı izin vermeyen sağlayıcı: bu oturum boyunca erişim sürer.
+            }
+            false
         }
-        val out = app.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Dosya yazılamadı")
+    }
+
+    fun encode(doc: Document, format: ExportFormat): ByteArray = when (format) {
+        ExportFormat.Ai, ExportFormat.Pdf -> AiExporter.export(doc, exportOptions)
+        ExportFormat.Svg -> SvgExporter.export(doc).toByteArray(Charsets.UTF_8)
+        ExportFormat.Png -> renderPng(doc, 4096, transparent = true)
+    }
+
+    fun export(doc: Document, uri: Uri, format: ExportFormat) {
+        val bytes = encode(doc, format)
+        val out = try {
+            app.contentResolver.openOutputStream(uri, "wt")
+        } catch (e: SecurityException) {
+            throw IOException("Dosyaya yazma izni yok")
+        } catch (e: java.io.FileNotFoundException) {
+            throw IOException("Dosya artık yerinde değil")
+        } ?: throw IOException("Dosya yazılamadı")
         out.use { it.write(bytes) }
     }
 
-    /** Çalışma yüzeylerini saydam zeminli PNG olarak çizer; uzun kenar en çok 4096 piksel olur. */
-    private fun renderPng(doc: Document): ByteArray {
+    /** Çalışma yüzeylerini PNG olarak çizer; uzun kenar en çok [maxSide] piksel olur. */
+    private fun renderPng(doc: Document, maxSide: Int, transparent: Boolean): ByteArray {
         val box = doc.artboardBounds() ?: throw IOException("Çalışma yüzeyi yok")
         val longest = maxOf(box.width, box.height)
-        val scale = minOf(4096.0 / longest, 4.0).coerceAtLeast(0.01)
+        val scale = minOf(maxSide / longest, 4.0).coerceAtLeast(0.001)
         val w = (box.width * scale).toInt().coerceAtLeast(1)
         val h = (box.height * scale).toInt().coerceAtLeast(1)
         val bmp = try {
@@ -96,7 +128,7 @@ class DocumentIo(private val app: Application) {
         val canvas = Canvas(bmp)
         canvas.scale(scale.toFloat(), scale.toFloat())
         canvas.translate(-box.left.toFloat(), -box.top.toFloat())
-        DocumentRenderer().draw(canvas, doc, artboardColor = null)
+        DocumentRenderer().draw(canvas, doc, artboardColor = if (transparent) null else 0xFFFFFFFF.toInt())
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
         bmp.recycle()
@@ -121,24 +153,20 @@ class DocumentIo(private val app: Application) {
         return data
     }
 
-    // ---- Otomatik kayıt ---------------------------------------------------
+    // ---- Uygulama içi belge deposu -----------------------------------------
 
-    fun hasAutosave(): Boolean = autosaveFile.length() > 0
-
-    @Synchronized
-    fun autosave(doc: Document) {
-        val tmp = File(app.filesDir, "autosave.tmp")
-        tmp.writeBytes(AiExporter.export(doc, exportOptions))
-        if (!tmp.renameTo(autosaveFile)) {
-            autosaveFile.delete()
-            tmp.renameTo(autosaveFile)
-        }
-        autosaveName.writeText(doc.name)
+    /** Belgeyi depoya yazar (otomatik kayıt). Küçük resim de yenilenir. */
+    fun saveToStore(meta: StoredDocument, doc: Document) {
+        val thumb = try { renderPng(doc, 360, transparent = false) } catch (e: Throwable) { null }
+        store.write(meta.copy(name = doc.name, modified = System.currentTimeMillis()), AiExporter.export(doc, exportOptions), thumb)
     }
 
-    @Synchronized
-    fun loadAutosave(): Document {
-        val name = try { autosaveName.readText().ifBlank { "Adsız" } } catch (e: IOException) { "Adsız" }
-        return AiImporter.import(autosaveFile.readBytes(), name).document
+    fun loadFromStore(id: String): Document {
+        val meta = store.read(id) ?: throw IOException("Belge bulunamadı")
+        try {
+            return AiImporter.import(store.readData(id), meta.name).document
+        } catch (e: ImportException) {
+            throw IOException(e.message)
+        }
     }
 }

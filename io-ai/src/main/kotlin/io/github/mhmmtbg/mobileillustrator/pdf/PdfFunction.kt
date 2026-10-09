@@ -31,10 +31,12 @@ abstract class PdfFunction(val domain: DoubleArray, val range: DoubleArray?) {
     }
 
     companion object {
-        fun parse(file: PdfFile, obj: PdfObj?): PdfFunction? {
+        fun parse(file: PdfFile, obj: PdfObj?, depth: Int = 0): PdfFunction? {
+            if (depth > 12) return null
             val r = file.resolve(obj)
             if (r is PdfArr) {
-                val parts = r.items.map { parse(file, it) ?: return null }
+                if (r.items.size > 64) return null
+                val parts = r.items.map { parse(file, it, depth + 1) ?: return null }
                 if (parts.isEmpty()) return null
                 return Combined(parts)
             }
@@ -48,7 +50,8 @@ abstract class PdfFunction(val domain: DoubleArray, val range: DoubleArray?) {
                     Exponential(domain, range, c0, c1, file.num(d["N"]) ?: 1.0)
                 }
                 3 -> {
-                    val fns = file.array(d["Functions"])?.map { parse(file, it) ?: return null } ?: return null
+                    val list = file.array(d["Functions"])?.takeIf { it.size <= 4096 } ?: return null
+                    val fns = list.map { parse(file, it, depth + 1) ?: return null }
                     if (fns.isEmpty()) return null
                     Stitching(domain, range, fns, file.numbers(d["Bounds"]) ?: DoubleArray(0), file.numbers(d["Encode"]) ?: DoubleArray(0))
                 }
@@ -190,12 +193,14 @@ abstract class PdfFunction(val domain: DoubleArray, val range: DoubleArray?) {
         init {
             val tokens = String(code, Charsets.ISO_8859_1).replace("{", " { ").replace("}", " } ").trim().split(Regex("\\s+"))
             var p = 0
+            var nesting = 0
             fun block(): List<Any> {
                 val out = ArrayList<Any>()
+                if (++nesting > 64) throw PdfException("İşlev çok derin iç içe")
                 while (p < tokens.size) {
                     val t = tokens[p++]
                     when {
-                        t == "{" -> out.add(block())
+                        t == "{" -> { out.add(block()); nesting-- }
                         t == "}" -> return out
                         t.isEmpty() -> {}
                         else -> out += (t.toDoubleOrNull() ?: t)
@@ -220,6 +225,7 @@ abstract class PdfFunction(val domain: DoubleArray, val range: DoubleArray?) {
         }
 
         private fun run(code: List<Any>, st: ArrayList<Double>) {
+            if (st.size > 4096) throw IllegalStateException("yığın taştı")
             fun pop() = st.removeAt(st.size - 1)
             fun b(v: Boolean) = if (v) 1.0 else 0.0
             var i = 0

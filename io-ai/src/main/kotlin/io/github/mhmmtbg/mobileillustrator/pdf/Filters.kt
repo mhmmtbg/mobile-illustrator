@@ -6,6 +6,22 @@ import java.util.zip.Inflater
 
 object Filters {
 
+    /**
+     * Tek bir akışın açılmış hali bundan büyük olamaz. Birkaç kilobaytlık "açılım bombası" dosyaların
+     * belleği doldurmasını engeller; gerçek çizimlerde bu boyuta yaklaşan akış olmaz.
+     */
+    const val MAX_DECODED_BYTES = 192 * 1024 * 1024
+
+    /** Sınırı aşınca [PdfException] atan çıktı tamponu. */
+    private class Bounded(initial: Int) : ByteArrayOutputStream(minOf(maxOf(initial, 1024), 8 * 1024 * 1024)) {
+        private fun check(extra: Int) {
+            if (count.toLong() + extra > MAX_DECODED_BYTES) throw PdfException("Dosyadaki bir veri akışı çok büyük")
+        }
+
+        override fun write(b: Int) { check(1); super.write(b) }
+        override fun write(b: ByteArray, off: Int, len: Int) { check(len); super.write(b, off, len) }
+    }
+
     /** Görsele özgü olup burada çözülmeyen süzgeçler; veri olduğu gibi bırakılır. */
     val ImageFilters = setOf("DCTDecode", "DCT", "JPXDecode", "CCITTFaxDecode", "CCF", "JBIG2Decode")
 
@@ -32,7 +48,7 @@ object Filters {
     private fun intOf(d: PdfDict?, key: String, def: Int): Int = (d?.get(key) as? PdfNum)?.value?.toInt() ?: def
 
     fun inflate(data: ByteArray): ByteArray {
-        val out = ByteArrayOutputStream(maxOf(data.size * 3, 1024))
+        val out = Bounded(data.size * 3)
         val buf = ByteArray(64 * 1024)
         var inf = Inflater()
         inf.setInput(data)
@@ -118,7 +134,7 @@ object Filters {
     }
 
     private fun ascii85(data: ByteArray): ByteArray {
-        val out = ByteArrayOutputStream(data.size)
+        val out = Bounded(data.size)
         val group = IntArray(5)
         var n = 0
         var i = 0
@@ -152,7 +168,7 @@ object Filters {
     }
 
     private fun asciiHex(data: ByteArray): ByteArray {
-        val out = ByteArrayOutputStream(data.size / 2)
+        val out = Bounded(data.size / 2)
         var hi = -1
         for (b in data) {
             val c = b.toInt() and 0xFF
@@ -171,7 +187,7 @@ object Filters {
     }
 
     private fun runLength(data: ByteArray): ByteArray {
-        val out = ByteArrayOutputStream(data.size * 2)
+        val out = Bounded(data.size * 2)
         var i = 0
         while (i < data.size) {
             val n = data[i].toInt() and 0xFF
@@ -184,14 +200,15 @@ object Filters {
             } else if (i < data.size) {
                 val b = data[i].toInt()
                 i++
-                repeat(257 - n) { out.write(b) }
+                val run = ByteArray(257 - n) { b.toByte() }
+                out.write(run, 0, run.size)
             }
         }
         return out.toByteArray()
     }
 
     private fun lzw(data: ByteArray, earlyChange: Int): ByteArray {
-        val out = ByteArrayOutputStream(data.size * 3)
+        val out = Bounded(data.size * 3)
         val table = arrayOfNulls<ByteArray>(4096)
         for (i in 0 until 256) table[i] = byteArrayOf(i.toByte())
         var next = 258
@@ -221,7 +238,7 @@ object Filters {
                 prev != null -> prev + prev[0]
                 else -> break
             }
-            out.write(entry)
+            out.write(entry, 0, entry.size)
             if (prev != null && next < 4096) {
                 table[next++] = prev + entry[0]
             }
