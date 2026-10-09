@@ -119,6 +119,7 @@ private fun handleShortcut(event: KeyEvent, vm: EditorViewModel, host: DesktopHo
         Key.L -> vm.selectTool(Tool.Ellipse)
         Key.T -> vm.selectTool(Tool.Text)
         Key.I -> vm.selectTool(Tool.Eyedropper)
+        Key.H -> vm.selectTool(Tool.Hand)
         else -> return false
     }
     return true

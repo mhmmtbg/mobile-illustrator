@@ -1,6 +1,20 @@
 package io.github.mhmmtbg.mobileillustrator.ui
 
 import io.github.mhmmtbg.mobileillustrator.model.tr
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -208,9 +222,33 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
         onDismissRequest = onDismiss,
         title = { Text(tr("Renk seç")) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                val preview = if (cmykMode) Color(cmyk().toRgb().toArgb()) else Color(argb())
-                Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(preview))
+            // Yükseklik sınırlı: klavye açıkken Uygula/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
+            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val shown = if (cmykMode) cmyk().toRgb().toArgb() else argb()
+                val preview = Color(shown)
+                // Seçilen rengin kodu, rengin üzerinde okunur biçimde gösterilir.
+                val code = "#%06X".format(shown and 0xFFFFFF)
+                val red = (shown shr 16) and 0xFF
+                val green = (shown shr 8) and 0xFF
+                val blue = shown and 0xFF
+                val onPreview = if (red * 0.299 + green * 0.587 + blue * 0.114 > 150) Color.Black else Color.White
+                Box(
+                    Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(preview)
+                        .semantics { contentDescription = tr("Renk kodu: %s", code) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(code, color = onPreview, style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    if (cmykMode) {
+                        "C %d  M %d  Y %d  K %d".format((c * 100).toInt(), (m * 100).toInt(), (y * 100).toInt(), (k * 100).toInt())
+                    } else {
+                        "R %d  G %d  B %d".format(red, green, blue)
+                    },
+                    Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                )
                 (ink0 as? Ink.Spot)?.let { spot ->
                     Text(
                         tr("Şu anki renk bir spot renk: %s (%%%s). Buradan renk seçersen spot tanımı kalkar.", spot.name, (spot.tint * 100).toInt()),
@@ -231,10 +269,10 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
                     ink(tr("Siyah (K)"), k) { k = it }
                     Text(tr("Ekrandaki renk yaklaşık bir önizlemedir; dosyaya bu CMYK değerleri yazılır."), style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text(tr("Ton"), style = MaterialTheme.typography.labelMedium)
-                    Slider(hue, { hue = it; syncHex() }, valueRange = 0f..360f, modifier = Modifier.semantics { contentDescription = tr("Ton") })
-                    Text(tr("Doygunluk"), style = MaterialTheme.typography.labelMedium)
-                    Slider(sat, { sat = it; syncHex() }, modifier = Modifier.semantics { contentDescription = tr("Doygunluk") })
+                    // Tekerlek: açı tonu, merkezden uzaklık doygunluğu verir. Parlaklık alttaki sürgüdedir.
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        ColorWheel(hue, sat, value) { h, sv -> hue = h; sat = sv; syncHex() }
+                    }
                     Text(tr("Parlaklık"), style = MaterialTheme.typography.labelMedium)
                     Slider(value, { value = it; syncHex() }, modifier = Modifier.semantics { contentDescription = tr("Parlaklık") })
                     OutlinedTextField(
@@ -481,4 +519,52 @@ fun CoffeeDialog(coffee: CoffeeState, onDismiss: () -> Unit, onBuy: () -> Unit) 
         },
         dismissButton = { if (!coffee.purchased) TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
     )
+}
+
+private val WheelHues = listOf(0f, 60f, 120f, 180f, 240f, 300f, 360f).map { Color(hsvToArgb(it, 1f, 1f)) }
+
+/**
+ * Renk tekerleği. Dokunulan noktanın açısı tonu (0-360), merkezden uzaklığı doygunluğu (0-1) verir;
+ * parlaklık ayrı bir sürgüyle seçilir ve tekerlek o parlaklıkta gösterilir.
+ */
+@Composable
+private fun ColorWheel(hue: Float, saturation: Float, value: Float, onChange: (hue: Float, saturation: Float) -> Unit) {
+    val current by rememberUpdatedState(onChange)
+    val label = tr("Renk tekerleği")
+    Canvas(
+        Modifier
+            .size(190.dp)
+            .semantics { contentDescription = label }
+            .pointerInput(Unit) {
+                fun pick(p: Offset) {
+                    val radius = minOf(size.width, size.height) / 2f
+                    val dx = p.x - size.width / 2f
+                    val dy = p.y - size.height / 2f
+                    val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                    current((angle + 360f) % 360f, (sqrt(dx * dx + dy * dy) / radius).coerceIn(0f, 1f))
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    pick(down.position)
+                    down.consume()
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        pick(change.position)
+                        change.consume()
+                    }
+                }
+            },
+    ) {
+        val radius = size.minDimension / 2f
+        drawCircle(Brush.sweepGradient(WheelHues, center), radius)
+        drawCircle(Brush.radialGradient(listOf(Color.White, Color.White.copy(alpha = 0f)), center, radius), radius)
+        if (value < 1f) drawCircle(Color.Black.copy(alpha = 1f - value), radius)
+        // Seçili rengin yeri
+        val a = Math.toRadians(hue.toDouble())
+        val at = Offset(center.x + (cos(a) * saturation * radius).toFloat(), center.y + (sin(a) * saturation * radius).toFloat())
+        drawCircle(Color(hsvToArgb(hue, saturation, value)), 9.dp.toPx(), at)
+        drawCircle(Color.White, 9.dp.toPx(), at, style = Stroke(3.dp.toPx()))
+        drawCircle(Color.Black.copy(alpha = 0.6f), 11.dp.toPx(), at, style = Stroke(1.dp.toPx()))
+    }
 }

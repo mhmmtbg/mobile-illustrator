@@ -7,7 +7,7 @@ FILES
 • My documents: all your work in one place with thumbnails; autosave means nothing gets lost
 
 DRAWING AND EDITING
-• Pen (Bezier), pencil, rectangle, ellipse, line, text, eyedropper
+• Pen (Bezier), pencil, rectangle, ellipse, line, text, eyedropper, hand tool
 • Node editing: drag anchors and handles, add or delete anchors, switch between corner and smooth
 • Move, scale, rotate; numeric size and angle; flip horizontally and vertically
 • Align, distribute, and snap with smart guides
@@ -17,7 +17,7 @@ DRAWING AND EDITING
 COLOUR AND TEXT
 • Solid colours, linear and radial gradients, opacity; blend modes in a file are kept
 • Stroke width, caps and joins, dashed lines
-• CMYK colour picking for print; CMYK and spot colours in a file keep their values
+• Colour wheel and colour codes; CMYK colour picking for print; CMYK and spot colours in a file keep their values
 • Multi-line text, alignment, line spacing; load your own .ttf/.otf fonts; convert text to outlines
 
 TABLET AND PHONE

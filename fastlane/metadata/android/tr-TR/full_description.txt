@@ -7,7 +7,7 @@ DOSYALAR
 • Belgelerim: tüm çalışmaların küçük resimleriyle tek yerde; otomatik kayıt sayesinde hiçbir şey kaybolmaz
 
 ÇİZİM VE DÜZENLEME
-• Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık
+• Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık, el aracı
 • Düğüm düzenleme: düğümleri ve tutamaçları sürükle, düğüm ekle, sil, köşe ya da yumuşak yap
 • Taşı, ölçekle, döndür; sayısal boyut ve açı; yatay ve dikey çevir
 • Hizalama, dağıtma ve akıllı kılavuzlarla yakalama
@@ -17,7 +17,7 @@ DOSYALAR
 RENK VE METİN
 • Düz renk, doğrusal ve dairesel gradyan, opaklık; dosyadaki karışım modları korunur
 • Kontur kalınlığı, uç ve köşe biçimleri, kesikli çizgi
-• Baskı için CMYK renk seçimi; dosyadaki CMYK ve spot renkler değerleriyle korunur
+• Renk tekerleği ve renk kodu; baskı için CMYK renk seçimi; dosyadaki CMYK ve spot renkler değerleriyle korunur
 • Çok satırlı metin, hizalama, satır aralığı; kendi .ttf/.otf fontunu yükle; metni yola çevir
 
 TABLET VE TELEFON

@@ -36,15 +36,16 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 - Dosyadaki katmanlar adları, görünürlükleri ve kilitleriyle gelir; çalışma yüzeyleri korunur.
 - Katman ekle, sil, yeniden adlandır, sırala, gizle, kilitle; nesneleri katmanlar arasında taşı.
 - Her katmanın içindeki nesne ağacı (gruplar, kırpma grupları) panelden gezilir ve seçilir.
+- Tuvalde seçilen nesne "Katmanda göster" ile listede bulunur; listeden seçilen nesne tuvalde seçilir ve ekran dışındaysa görünüme getirilir.
 
 **Çizim ve düzenleme**
 - Seçim: taşı, ölçekle, döndür, çerçeveyle çoklu seç; sayısal genişlik/yükseklik/açı, yatay ve dikey çevirme.
 - Doğrudan seçim: düğümleri ve tutamaçları sürükle, yola dokunarak düğüm ekle, sil, köşe/yumuşak çevir.
-- Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık.
+- Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık; yalnızca tuvali kaydıran el aracı.
 - Hizalama ve dağıtma, kenarlara ve merkezlere yakalama (kılavuz çizgileriyle).
 - Şekil işlemleri: birleştir, öndekini çıkar, kesiştir, dışla. Kırpma maskesi yap/bırak.
 - Dolgu ve kontur: düz renk, doğrusal/dairesel gradyan (duraklar ve açı), opaklık; kontur kalınlığı, uç, köşe, kesikli çizgi.
-- Renk seçici RGB (ton/doygunluk/parlaklık, onaltılık) ve CMYK modunda çalışır.
+- Renk seçici: renk tekerleği ve parlaklık, renk kodu (#RRGGBB) ve R/G/B değerleri; baskı için CMYK modu.
 - Metin: çok satır, hizalama, satır aralığı, kalın/eğik, kendi `.ttf`/`.otf` fontunu yükleme, yola çevirme.
 - Grupla, grubu çöz, çoğalt, sıralama, geri al/yinele, görsel yerleştirme.
 
@@ -55,7 +56,7 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 
 **Windows:** aynı ekranlar ve aynı dosya desteği. Fare tekerleği yakınlaştırır, sağ ya da orta tuşla
 sürüklemek kaydırır. Kısayollar: Ctrl+Z / Ctrl+Shift+Z, Ctrl+S, Ctrl+O, Ctrl+A, Ctrl+D, Ctrl+G,
-Ctrl+0 (sığdır), Delete; araçlar V, A, P, N, M, L, T, I. Komut satırında dosya yolu verilirse o dosya açılır.
+Ctrl+0 (sığdır), Delete; araçlar V, A, P, N, M, L, T, I, H (el). Komut satırında dosya yolu verilirse o dosya açılır.
 
 **Reklam ve satın alma (yalnızca Android):** uygulama şerit reklam gösterir. Dosya menüsündeki
 "Geliştiriciye kahve ısmarla" tek seferlik bir Google Play satın almasıdır; alınınca reklamlar kalıcı

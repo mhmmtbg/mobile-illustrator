@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -83,7 +85,20 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
             BarButton(AppIcons.Close, tr("Paneli kapat"), onClick = vm::toggleLayersPanel)
         }
         HorizontalDivider(color = AppColors.Divider)
-        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+        // Tuvalde seçilen nesne listede görünür olsun: kapalı bir grubun içindeyse açılır, satır ekran dışındaysa
+        // liste oraya kayar. Panelden seçildiğinde satır zaten görünür olduğundan liste yerinde kalır.
+        val listState = rememberLazyListState()
+        val selectedId = state.selection.singleOrNull()
+        LaunchedEffect(selectedId, state.revealTick) {
+            val id = selectedId ?: return@LaunchedEffect
+            val index = rows.indexOfFirst { it is PanelRow.OfNode && it.node.id == id }
+            if (index < 0) {
+                vm.revealSelectionInLayers()
+            } else if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                listState.animateScrollToItem(maxOf(0, index - 2))
+            }
+        }
+        LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
             items(rows, key = { it.key }) { row ->
                 when (row) {
                     is PanelRow.OfLayer -> LayerRow(vm, row, onRename = { renaming = row.layer.id })

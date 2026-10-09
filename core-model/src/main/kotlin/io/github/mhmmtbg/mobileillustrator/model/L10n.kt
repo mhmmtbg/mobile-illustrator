@@ -297,6 +297,10 @@ object L10n {
         "az önce" to "just now",
         "%s dk önce" to "%s min ago",
         "%s sa önce" to "%s h ago",
+        "Kaydır" to "Pan",
+        "Katmanda göster" to "Show in layers",
+        "Renk tekerleği" to "Colour wheel",
+        "Renk kodu: %s" to "Colour code: %s",
     )
 }
 

@@ -1,9 +1,12 @@
 package io.github.mhmmtbg.mobileillustrator.desktop
 
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Density
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.editor.ExportFormat
+import io.github.mhmmtbg.mobileillustrator.editor.Tool
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.L10n
 import io.github.mhmmtbg.mobileillustrator.model.PathNode
@@ -110,5 +113,45 @@ class DesktopSmokeTest {
         assertTrue(((centre shr 16) and 0xFF) > 120, "tuval ortası %08X".format(centre))
         SwingUtilities.invokeAndWait { scene.close() }
         assertTrue(Document.blank().layers.isNotEmpty())
+    }
+
+    @Test
+    fun handToolOnlyPansAndSelectionIsRevealedInLayers() {
+        val io = DesktopDocumentIo(newRoot())
+        lateinit var vm: EditorViewModel
+        SwingUtilities.invokeAndWait {
+            vm = EditorViewModel(io, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+            vm.onCanvasSize(Size(1000f, 800f))
+            vm.openSample()
+        }
+        val deadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < deadline && (vm.state.busy != null || vm.state.document.layers.size != 3)) Thread.sleep(50)
+        SwingUtilities.invokeAndWait {
+            // El aracı: sürüklemek görünümü kaydırır, dokunmak hiçbir şeyi seçmez ya da çizmez.
+            val nodes = vm.state.document.layers.sumOf { it.children.size }
+            val before = vm.viewport
+            vm.selectTool(Tool.Hand)
+            vm.onDrag(Offset(400f, 400f), Offset(450f, 430f))
+            vm.onDrag(Offset(400f, 400f), Offset(500f, 460f))
+            vm.onDragEnd()
+            vm.onTap(Offset(500f, 400f))
+            assertEquals(before.scale, vm.viewport.scale)
+            assertEquals(before.offset.x + 100f, vm.viewport.offset.x, 0.5f)
+            assertEquals(before.offset.y + 60f, vm.viewport.offset.y, 0.5f)
+            assertTrue(vm.state.selection.isEmpty())
+            assertEquals(nodes, vm.state.document.layers.sumOf { it.children.size })
+            assertTrue(!vm.state.history.canUndo, "kaydırma belgeyi değiştirmemeli")
+
+            // Seçili nesne katman panelinde gösterilir: panel açılır ve nesnenin katmanı genişler.
+            val layer = vm.state.document.layers.first { it.name == "Pallette" }
+            vm.selectNode(layer.children.first().id)
+            vm.toggleLayersPanel()
+            vm.toggleLayersPanel()
+            assertTrue(!vm.state.layersOpen)
+            vm.revealSelectionInLayers()
+            assertTrue(vm.state.layersOpen)
+            assertTrue(layer.id in vm.state.expanded)
+            assertEquals(1, vm.state.revealTick)
+        }
     }
 }

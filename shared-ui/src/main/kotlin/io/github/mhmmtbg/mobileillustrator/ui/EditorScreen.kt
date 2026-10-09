@@ -94,6 +94,7 @@ private val Tools = listOf(
     ToolSpec(Tool.Line, AppIcons.Line, "Çizgi"),
     ToolSpec(Tool.Text, AppIcons.Text, "Metin"),
     ToolSpec(Tool.Eyedropper, AppIcons.Eyedropper, "Damlalık"),
+    ToolSpec(Tool.Hand, AppIcons.Hand, "Kaydır"),
 )
 
 @Composable
@@ -403,6 +404,7 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransf
             actions += tr("Arkaya") to { vm.reorderSelection(ZMove.Backward) }
             actions += tr("En öne") to { vm.reorderSelection(ZMove.Front) }
             actions += tr("En arkaya") to { vm.reorderSelection(ZMove.Back) }
+            actions += tr("Katmanda göster") to vm::revealSelectionInLayers
             if (single != null) actions += tr("Adlandır") to { onRename(single.id) }
             actions += tr("Sil") to vm::deleteSelection
         }

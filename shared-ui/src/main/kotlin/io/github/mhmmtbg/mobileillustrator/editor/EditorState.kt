@@ -13,7 +13,8 @@ import io.github.mhmmtbg.mobileillustrator.model.Rect
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
 
-enum class Tool { Select, Direct, Pen, Pencil, Rectangle, Ellipse, Line, Text, Eyedropper }
+/** [Hand]: yalnızca tuvali kaydırır; dokunuş hiçbir şeyi seçmez ya da çizmez. */
+enum class Tool { Select, Direct, Pen, Pencil, Rectangle, Ellipse, Line, Text, Eyedropper, Hand }
 
 /** Kontur çizgi türü; aralıklar kalınlığa oranlıdır. */
 enum class DashStyle(val pattern: List<Double>) {
@@ -119,6 +120,8 @@ data class EditorState(
     val layersOpen: Boolean = false,
     /** Katman panelinde açık duran katman ve grupların kimlikleri. */
     val expanded: Set<String> = emptySet(),
+    /** Katman panelinin seçili nesneye kaydırılması istendikçe artar. */
+    val revealTick: Int = 0,
     val busy: String? = null,
     val message: String? = null,
     /** İçe aktarmada birebir aktarılamayan özellikler; pencere olarak gösterilir. */

@@ -412,7 +412,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
                 val snap = if (targets.isEmpty()) null else Snap.point(start, targets, snapThreshold())
                 return Drag.Create(if (snap == null) start else Vec2(start.x + snap.dx, start.y + snap.dy), newId(), layer.id, targets)
             }
-            Tool.Eyedropper -> return Drag.Pan(startScreen)
+            Tool.Eyedropper, Tool.Hand -> return Drag.Pan(startScreen)
         }
     }
 
@@ -1072,6 +1072,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     }
 
     /** Katman panelinden nesne seçimi (iç içe nesneler dahil). */
+    /** Katman panelinden seçim: nesne tuvalde de seçilir ve ekranın dışındaysa görünüme getirilir. */
     fun selectNode(id: String) {
         val node = present.findNode(id) ?: return
         if (state.pen != null) finishPen()
@@ -1079,6 +1080,41 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             nodeEdit = if (state.tool == Tool.Direct && node is PathNode) NodeEdit(id) else null,
             tool = if (state.tool == Tool.Direct) Tool.Direct else Tool.Select,
         )
+        bringIntoView(present.boundsOf(setOf(id)) ?: return)
+    }
+
+    /** [box] ekranda hiç görünmüyorsa görünümü (ölçeği değiştirmeden) onu ortalayacak biçimde kaydırır. */
+    private fun bringIntoView(box: Rect) {
+        if (canvasSize.width <= 0 || canvasSize.height <= 0) return
+        val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(canvasSize.width, canvasSize.height)))
+        if (box.intersects(visible)) return
+        val c = box.center
+        fitted = false
+        viewport = viewport.copy(
+            offset = Offset(canvasSize.width / 2 - c.x.toFloat() * viewport.scale, canvasSize.height / 2 - c.y.toFloat() * viewport.scale),
+        )
+    }
+
+    /**
+     * Tuvalde seçili nesneyi katman panelinde gösterir: panel açılır, nesnenin içinde bulunduğu katman ve
+     * gruplar genişletilir, liste o satıra kaydırılır.
+     */
+    fun revealSelectionInLayers() {
+        val id = state.selection.firstOrNull() ?: return
+        val path = ArrayList<String>()
+        fun search(nodes: List<Node>): Boolean {
+            for (n in nodes) {
+                if (n.id == id) return true
+                if (n is GroupNode) {
+                    path += n.id
+                    if (search(n.children)) return true
+                    path.removeAt(path.size - 1)
+                }
+            }
+            return false
+        }
+        val layer = present.layers.firstOrNull { l -> path.clear(); search(l.children) } ?: return
+        state = state.copy(layersOpen = true, expanded = state.expanded + layer.id + path, revealTick = state.revealTick + 1)
     }
 
     // ---- Metin ------------------------------------------------------------
