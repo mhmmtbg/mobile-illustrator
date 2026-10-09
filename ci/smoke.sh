@@ -138,6 +138,9 @@ has "Grubu çöz" || fail "gruplama çalışmadı"
 tap "Geri al"
 expect "Yinele" enabled true "geri aldıktan sonra yinelenebilmeli"
 tap "Yinele"
+# Geri al/yinele seçimi boşaltır: gruba (içindeki dikdörtgene) dokunarak yeniden seç.
+adb shell input tap $((W * 22 / 100)) $((H * 26 / 100))
+sleep 1
 tap "Grubu çöz"
 shot 10-grup
 

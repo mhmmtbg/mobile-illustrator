@@ -794,6 +794,26 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         state = state.copy(textPrompt = TextPrompt(t.id, Vec2.Zero, t.text, t.fontSize, t.fontFamily, t.bold, t.italic))
     }
 
+    /** Seçili metni yola çevirir (Illustrator'daki "Anahat Oluştur"); artık düğümleriyle düzenlenebilir. */
+    fun outlineSelectedText() {
+        val id = state.selection.singleOrNull() ?: return
+        val t = present.findNode(id) as? TextNode ?: return
+        val shapes = t.outline ?: try {
+            io.github.mhmmtbg.mobileillustrator.render.TextOutliner.outline(t)
+        } catch (e: Throwable) {
+            emptyList()
+        }
+        if (shapes.isEmpty()) {
+            state = state.copy(message = "Bu metin yola çevrilemedi")
+            return
+        }
+        val path = PathNode(
+            id = t.id, name = t.name, visible = t.visible, locked = t.locked, opacity = t.opacity, transform = t.transform,
+            blendMode = t.blendMode, subpaths = shapes, fill = t.fill, stroke = t.stroke,
+        )
+        commit(present.updateNode(id) { path }) { it.withSelection(setOf(id)) }
+    }
+
     fun dismissTextPrompt() {
         state = state.copy(textPrompt = null)
     }

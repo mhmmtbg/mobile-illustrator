@@ -284,7 +284,10 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit) {
         state.selection.isNotEmpty() -> {
             val nodes = state.selection.mapNotNull { doc.findNode(it) }
             val single = nodes.singleOrNull()
-            if (single is TextNode) actions += "Metni düzenle" to vm::editSelectedText
+            if (single is TextNode) {
+                actions += "Metni düzenle" to vm::editSelectedText
+                actions += "Yola çevir" to vm::outlineSelectedText
+            }
             actions += "Çoğalt" to vm::duplicateSelection
             if (nodes.size >= 2) actions += "Grupla" to vm::groupSelection
             if (nodes.any { it is GroupNode }) actions += "Grubu çöz" to vm::ungroupSelection
