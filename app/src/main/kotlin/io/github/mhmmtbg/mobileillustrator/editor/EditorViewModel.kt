@@ -19,6 +19,7 @@ import io.github.mhmmtbg.mobileillustrator.model.Layer
 import io.github.mhmmtbg.mobileillustrator.model.LineCap
 import io.github.mhmmtbg.mobileillustrator.model.LineJoin
 import io.github.mhmmtbg.mobileillustrator.model.Matrix
+import io.github.mhmmtbg.mobileillustrator.model.Node
 import io.github.mhmmtbg.mobileillustrator.model.Paint
 import io.github.mhmmtbg.mobileillustrator.model.PathFit
 import io.github.mhmmtbg.mobileillustrator.model.PathNode
@@ -67,6 +68,7 @@ import io.github.mhmmtbg.mobileillustrator.model.withLocked
 import io.github.mhmmtbg.mobileillustrator.model.withName
 import io.github.mhmmtbg.mobileillustrator.model.withOpacity
 import io.github.mhmmtbg.mobileillustrator.model.withVisible
+import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -740,7 +742,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             if (layer.visible && !layer.locked) s else {
                 // Gizlenen ya da kilitlenen katmandaki nesneler seçili kalmasın.
                 val gone = HashSet<String>()
-                fun collect(nodes: List<io.github.mhmmtbg.mobileillustrator.model.Node>) {
+                fun collect(nodes: List<Node>) {
                     for (n in nodes) { gone += n.id; if (n is GroupNode) collect(n.children) }
                 }
                 collect(layer.children)
@@ -799,7 +801,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val id = state.selection.singleOrNull() ?: return
         val t = present.findNode(id) as? TextNode ?: return
         val shapes = t.outline ?: try {
-            io.github.mhmmtbg.mobileillustrator.render.TextOutliner.outline(t)
+            TextOutliner.outline(t)
         } catch (e: Throwable) {
             emptyList()
         }
