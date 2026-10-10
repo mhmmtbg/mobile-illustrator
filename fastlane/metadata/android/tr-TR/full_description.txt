@@ -13,6 +13,7 @@ DOSYALAR
 • Hizalama, dağıtma ve akıllı kılavuzlarla yakalama
 • Şekil işlemleri: birleştir, çıkar, kesiştir, dışla; kırpma maskesi
 • Gruplama, sıralama, çoğaltma, 200 adım geri alma
+• Vektöre çevirme: logo, çizim ya da fotoğrafı düzenlenebilir yollara dönüştür
 
 RENK VE METİN
 • Düz renk, doğrusal ve dairesel gradyan, opaklık; dosyadaki karışım modları korunur

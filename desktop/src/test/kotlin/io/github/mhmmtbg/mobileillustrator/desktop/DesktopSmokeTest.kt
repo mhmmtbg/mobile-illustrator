@@ -7,7 +7,9 @@ import androidx.compose.ui.unit.Density
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.editor.ExportFormat
 import io.github.mhmmtbg.mobileillustrator.editor.Tool
+import io.github.mhmmtbg.mobileillustrator.model.DocIndex
 import io.github.mhmmtbg.mobileillustrator.model.Document
+import io.github.mhmmtbg.mobileillustrator.model.GroupNode
 import io.github.mhmmtbg.mobileillustrator.model.L10n
 import io.github.mhmmtbg.mobileillustrator.model.PathNode
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
@@ -153,5 +155,62 @@ class DesktopSmokeTest {
             assertTrue(layer.id in vm.state.expanded)
             assertEquals(1, vm.state.revealTick)
         }
+    }
+
+    @Test
+    fun placedImageIsVectorizedInPlaceAndCanBeUndone() {
+        val root = newRoot()
+        val io = DesktopDocumentIo(root)
+        // Beyaz zeminde kırmızı daire ve mavi kare
+        val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(300, 200)
+        surface.canvas.clear(0xFFFFFFFF.toInt())
+        val paint = org.jetbrains.skia.Paint().apply { isAntiAlias = true }
+        paint.color = 0xFFE03030.toInt()
+        surface.canvas.drawCircle(90f, 100f, 60f, paint)
+        paint.color = 0xFF2850C8.toInt()
+        surface.canvas.drawRect(org.jetbrains.skia.Rect.makeLTRB(180f, 40f, 270f, 150f), paint)
+        val file = File(root, "logo.png")
+        file.writeBytes(surface.makeImageSnapshot().encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+
+        lateinit var vm: EditorViewModel
+        SwingUtilities.invokeAndWait {
+            vm = EditorViewModel(io, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+            vm.onCanvasSize(Size(1000f, 800f))
+        }
+        fun waitUntil(what: String, done: () -> Boolean) {
+            val deadline = System.currentTimeMillis() + 60_000
+            while (System.currentTimeMillis() < deadline && !done()) Thread.sleep(50)
+            assertTrue(done(), what)
+        }
+        // Açılışta son belgenin geri yüklenmesi bitmeden bir şey eklenmez.
+        waitUntil("açılış") { vm.state.busy == null }
+        SwingUtilities.invokeAndWait { vm.placeImage(file.path) }
+        waitUntil("görsel yerleşmeli") { vm.state.busy == null && vm.state.selection.size == 1 }
+        val image = vm.state.document.layers.flatMap { it.children }.single()
+        val original = DocIndex.of(vm.state.document).painted(image)!!
+        SwingUtilities.invokeAndWait { vm.startTrace() }
+        waitUntil("iz hesaplanmalı") { vm.state.trace?.busy == false }
+        val ui = vm.state.trace!!
+        assertEquals(null, ui.error)
+        assertEquals(3, ui.colors)
+        assertEquals(3, ui.shapes)
+        assertNotNull(ui.preview)
+        SwingUtilities.invokeAndWait { vm.applyTrace() }
+        val after = vm.state.document.layers.flatMap { it.children }
+        assertEquals(2, after.size)
+        assertEquals(false, after[0].visible, "özgün görsel gizlenmeli")
+        val group = after[1] as GroupNode
+        assertEquals(3, group.children.size)
+        assertEquals(setOf(group.id), vm.state.selection)
+        // İz, görselin belgedeki yerini kaplamalı.
+        val traced = DocIndex.of(vm.state.document).painted(group)!!
+        assertEquals(original.left, traced.left, 1.5)
+        assertEquals(original.top, traced.top, 1.5)
+        assertEquals(original.right, traced.right, 1.5)
+        assertEquals(original.bottom, traced.bottom, 1.5)
+        SwingUtilities.invokeAndWait { vm.undo() }
+        val undone = vm.state.document.layers.flatMap { it.children }
+        assertEquals(1, undone.size)
+        assertTrue(undone[0].visible)
     }
 }

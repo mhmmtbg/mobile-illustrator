@@ -1,5 +1,7 @@
 package io.github.mhmmtbg.mobileillustrator.editor
 
+import androidx.compose.ui.graphics.ImageBitmap
+import io.github.mhmmtbg.mobileillustrator.trace.TraceOptions
 import androidx.compose.ui.geometry.Offset
 import io.github.mhmmtbg.mobileillustrator.model.Anchor
 import io.github.mhmmtbg.mobileillustrator.model.AnchorRef
@@ -84,6 +86,30 @@ data class TextPrompt(
     val lineHeight: Double = 1.2,
 )
 
+/** Vektöre çevirmenin hazır ayarları. [detail]: görselin izlenmeden önce küçültüleceği uzun kenar (piksel). */
+enum class TracePreset(val label: String, val options: TraceOptions, val detail: Int) {
+    BlackWhite("Siyah-beyaz", TraceOptions(mode = TraceOptions.Mode.BlackWhite, speckle = 6, smoothness = 1.0), 1200),
+    Logo("Logo / çizim", TraceOptions(colors = 8, speckle = 8, smoothness = 1.0), 1000),
+    Photo("Fotoğraf", TraceOptions(colors = 20, speckle = 16, smoothness = 1.3, maxShapes = 800), 560),
+}
+
+/**
+ * "Vektöre çevir" penceresinin durumu. Ayarlar değiştikçe iz arka planda yeniden hesaplanır ve önizlemesi gösterilir;
+ * "Uygula" o sonucu belgeye ekler.
+ */
+data class TraceUi(
+    val nodeId: String,
+    val options: TraceOptions = TracePreset.Logo.options,
+    val detail: Int = TracePreset.Logo.detail,
+    val preset: TracePreset? = TracePreset.Logo,
+    val busy: Boolean = true,
+    val preview: ImageBitmap? = null,
+    val shapes: Int = 0,
+    val anchors: Int = 0,
+    val colors: Int = 0,
+    val error: String? = null,
+)
+
 /** Açık belgenin depodaki kimliği ve (varsa) bağlı olduğu dış dosya. */
 data class DocSession(
     val id: String,
@@ -132,6 +158,8 @@ data class EditorState(
     val crashReport: String? = null,
     /** Doluysa "Belgelerim" ekranı açıktır. */
     val gallery: List<StoredDocument>? = null,
+    /** Doluysa "Vektöre çevir" penceresi açıktır. */
+    val trace: TraceUi? = null,
 ) {
     val document: Document get() = preview ?: history.present
 }

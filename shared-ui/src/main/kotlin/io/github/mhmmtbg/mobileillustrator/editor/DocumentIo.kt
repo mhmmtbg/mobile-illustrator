@@ -9,6 +9,7 @@ import io.github.mhmmtbg.mobileillustrator.model.ImportResult
 import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
 import io.github.mhmmtbg.mobileillustrator.svg.SvgExporter
+import io.github.mhmmtbg.mobileillustrator.trace.PixelImage
 import io.github.mhmmtbg.mobileillustrator.svg.SvgImporter
 import java.io.File
 import java.io.IOException
@@ -46,6 +47,11 @@ abstract class DocumentIo(root: File) {
 
     /** Görsel dosyasını okur. JPEG olduğu gibi kalır; diğerleri PNG'ye çevrilir. */
     protected abstract fun decodeImage(bytes: ByteArray): ImageData
+
+    /**
+     * Görseli piksellerine çözer (vektöre çevirmek için); uzun kenar [maxSide] pikseli geçmeyecek biçimde küçültülür.
+     */
+    abstract fun decodePixels(image: ImageData, maxSide: Int): PixelImage
 
     /** Dosya bu platformda font olarak açılabiliyor mu. */
     protected abstract fun isValidFont(file: File): Boolean

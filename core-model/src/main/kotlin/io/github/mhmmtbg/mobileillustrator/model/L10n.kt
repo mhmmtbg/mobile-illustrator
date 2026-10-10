@@ -301,6 +301,26 @@ object L10n {
         "Katmanda göster" to "Show in layers",
         "Renk tekerleği" to "Colour wheel",
         "Renk kodu: %s" to "Colour code: %s",
+        "Vektöre çevir" to "Vectorize",
+        "Vektöre çevrildi: %s şekil" to "Vectorized: %s shapes",
+        "İz önizlemesi" to "Trace preview",
+        "İz özeti" to "Trace summary",
+        "Hesaplanıyor…" to "Working…",
+        "%s renk · %s şekil · %s düğüm" to "%s colours · %s shapes · %s anchors",
+        "Sonuç çok ayrıntılı; düzenleme yavaşlayabilir. Ayrıntıyı ya da renk sayısını azaltmayı dene." to "The result is very detailed; editing may slow down. Try lowering the detail or the number of colours.",
+        "Hazır ayar" to "Preset",
+        "Siyah-beyaz" to "Black & white",
+        "Logo / çizim" to "Logo / drawing",
+        "Fotoğraf" to "Photo",
+        "Eşiği kendiliğinden seç" to "Choose threshold automatically",
+        "Eşik" to "Threshold",
+        "Renk sayısı" to "Colours",
+        "Ayrıntı" to "Detail",
+        "Leke temizliği" to "Speckle removal",
+        "Yumuşaklık" to "Smoothness",
+        "Köşe yuvarlama" to "Corner rounding",
+        "Zemin rengini izleme" to "Leave out the background colour",
+        "Özgün görsel silinmez, gizlenir; katman panelinden yeniden gösterebilirsin." to "The original image is hidden, not deleted; you can show it again from the layers panel.",
     )
 }
 
@@ -323,6 +343,7 @@ fun trName(name: String): String {
     }
     return when (name) {
         "Adsız" -> "Untitled"
+        "İz" -> "Trace"
         "Kırpma grubu" -> "Clip group"
         "Yol", "Grup", "Görsel", "Metin", "Dikdörtgen", "Elips", "Çizgi" -> L10n.translate(name)
         else -> name

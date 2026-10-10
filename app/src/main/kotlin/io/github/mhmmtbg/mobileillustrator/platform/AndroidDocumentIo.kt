@@ -15,6 +15,7 @@ import io.github.mhmmtbg.mobileillustrator.model.ImageData
 import io.github.mhmmtbg.mobileillustrator.model.artboardBounds
 import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
+import io.github.mhmmtbg.mobileillustrator.trace.PixelImage
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -108,6 +109,27 @@ class AndroidDocumentIo(private val app: Application) : DocumentIo(app.filesDir)
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
         bmp.recycle()
         return out.toByteArray()
+    }
+
+    override fun decodePixels(image: ImageData, maxSide: Int): PixelImage {
+        val bytes = image.bytes
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException(tr("Görsel çözülemedi"))
+        // Önce kabaca (ikinin katlarıyla), sonra tam istenen boyuta küçültülür.
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: throw IOException(tr("Görsel çözülemedi"))
+        val k = minOf(1.0, maxSide.toDouble() / maxOf(decoded.width, decoded.height))
+        val w = (decoded.width * k).toInt().coerceAtLeast(1)
+        val h = (decoded.height * k).toInt().coerceAtLeast(1)
+        val scaled = if (w == decoded.width && h == decoded.height) decoded else Bitmap.createScaledBitmap(decoded, w, h, true)
+        val argb = IntArray(w * h)
+        scaled.getPixels(argb, 0, w, 0, 0, w, h)
+        if (scaled !== decoded) scaled.recycle()
+        decoded.recycle()
+        return PixelImage(w, h, argb)
     }
 
     override fun decodeImage(bytes: ByteArray): ImageData {

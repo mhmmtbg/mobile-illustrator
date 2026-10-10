@@ -80,6 +80,18 @@ import io.github.mhmmtbg.mobileillustrator.model.withName
 import io.github.mhmmtbg.mobileillustrator.model.withOpacity
 import io.github.mhmmtbg.mobileillustrator.model.withVisible
 import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.nativeCanvas
+import io.github.mhmmtbg.mobileillustrator.model.FillRule
+import io.github.mhmmtbg.mobileillustrator.model.ImageData
+import io.github.mhmmtbg.mobileillustrator.model.layerOf
+import io.github.mhmmtbg.mobileillustrator.trace.PixelImage
+import io.github.mhmmtbg.mobileillustrator.trace.TraceCancelled
+import io.github.mhmmtbg.mobileillustrator.trace.TraceOptions
+import io.github.mhmmtbg.mobileillustrator.trace.TraceResult
+import io.github.mhmmtbg.mobileillustrator.trace.Tracer
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1357,6 +1369,137 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             )
             commit(present.addNode(layer.id, node)) { it.copy(tool = Tool.Select).withSelection(setOf(node.id)) }
         }
+    }
+
+    // ---- Vektöre çevirme (görsel izleme) -------------------------------------
+
+    /** İzlemenin ilerlemesi (0-1); arka plan iş parçacığından güncellenir. */
+    var traceProgress by mutableFloatStateOf(0f)
+        private set
+
+    private var traceJob: Job? = null
+
+    /** Son hesaplanan iz: "Uygula" bunu belgeye ekler. */
+    private var tracedGroup: GroupNode? = null
+
+    /** Çözülmüş pikseller ayrıntı düzeyine göre saklanır (ayar değiştikçe görsel yeniden çözülmesin). */
+    private var tracePixels: Triple<ImageData, Int, PixelImage>? = null
+
+    /** Seçili görsel için "Vektöre çevir" penceresini açar. */
+    fun startTrace() {
+        val node = state.selection.singleOrNull()?.let { present.findNode(it) } as? ImageNode ?: return
+        state = state.copy(trace = TraceUi(node.id))
+        computeTrace(0)
+    }
+
+    fun setTracePreset(preset: TracePreset) {
+        val ui = state.trace ?: return
+        state = state.copy(trace = ui.copy(options = preset.options, detail = preset.detail, preset = preset, busy = true, error = null))
+        computeTrace(0)
+    }
+
+    /** Ayar değişti: kısa bir beklemeden sonra (sürgü oynarken her adımda değil) yeniden hesaplanır. */
+    fun updateTrace(options: TraceOptions, detail: Int) {
+        val ui = state.trace ?: return
+        if (ui.options == options && ui.detail == detail) return
+        state = state.copy(trace = ui.copy(options = options, detail = detail.coerceIn(100, 2000), preset = null, busy = true, error = null))
+        computeTrace(350)
+    }
+
+    fun cancelTrace() {
+        traceJob?.cancel()
+        traceJob = null
+        tracedGroup = null
+        tracePixels = null
+        state = state.copy(trace = null)
+    }
+
+    /** İzi belgeye ekler: özgün görsel gizlenir (silinmez), yerine aynı konumda yollardan oluşan bir grup gelir. */
+    fun applyTrace() {
+        val ui = state.trace ?: return
+        val group = tracedGroup
+        if (ui.busy || group == null) return
+        val image = present.findNode(ui.nodeId) as? ImageNode
+        val layer = present.layerOf(ui.nodeId)
+        traceJob = null
+        tracedGroup = null
+        tracePixels = null
+        if (image == null || layer == null) {
+            state = state.copy(trace = null)
+            return
+        }
+        // Görsel katmanın doğrudan çocuğuysa iz hemen üzerine, değilse katmanın en üstüne eklenir.
+        val index = layer.children.indexOfFirst { it.id == image.id }
+        var doc = present.updateNode(image.id) { it.withVisible(false) }
+        doc = doc.updateLayer(layer.id) { l ->
+            val children = l.children.toMutableList()
+            if (index >= 0) children.add(index + 1, group) else children.add(group)
+            l.copy(children = children)
+        }
+        commit(doc) { it.copy(trace = null, tool = Tool.Select, message = tr("Vektöre çevrildi: %s şekil", group.children.size)).withSelection(setOf(group.id)) }
+    }
+
+    private fun computeTrace(delayMillis: Long) {
+        traceJob?.cancel()
+        val ui = state.trace ?: return
+        val node = present.findNode(ui.nodeId) as? ImageNode ?: return
+        val outer = present.parentMatrix(node.id)
+        traceProgress = 0f
+        traceJob = scope.launch {
+            if (delayMillis > 0) delay(delayMillis)
+            try {
+                val built = withContext(Dispatchers.Default) {
+                    val cached = tracePixels
+                    val pixels = if (cached != null && cached.first === node.image && cached.second == ui.detail) cached.third else {
+                        io.decodePixels(node.image, ui.detail).also { tracePixels = Triple(node.image, ui.detail, it) }
+                    }
+                    var shown = 0f
+                    val result = Tracer.trace(
+                        pixels.argb, pixels.width, pixels.height, ui.options,
+                        progress = { p -> if (p - shown >= 0.02) { shown = p.toFloat(); traceProgress = shown } },
+                        cancelled = { !isActive },
+                    )
+                    val children = result.shapes.map { PathNode(subpaths = it.subpaths, fill = Paint.Solid(it.color), fillRule = FillRule.EvenOdd) }
+                    // İz piksel koordinatındadır; görselin kendi boyutuna ve belgedeki yerine taşınır.
+                    val toImage = Matrix.scale(node.image.width.toDouble() / pixels.width, node.image.height.toDouble() / pixels.height)
+                    val group = GroupNode(name = "İz", children = children, transform = outer * node.transform * toImage, opacity = node.opacity)
+                    TraceBuilt(group, result, renderTracePreview(children, pixels.width, pixels.height))
+                }
+                tracedGroup = built.group
+                traceProgress = 1f
+                state = state.copy(
+                    trace = state.trace?.copy(
+                        busy = false, preview = built.preview, shapes = built.result.shapes.size,
+                        anchors = built.result.anchorCount, colors = built.result.colorCount, error = null,
+                    ),
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: TraceCancelled) {
+                // yeni ayarlarla yeniden başlatıldı ya da pencere kapandı
+            } catch (e: Throwable) {
+                tracedGroup = null
+                val reason = if (e is OutOfMemoryError) tr("Görsel için yeterli bellek yok") else (e.message ?: tr("İşlem başarısız oldu"))
+                state = state.copy(trace = state.trace?.copy(busy = false, error = reason))
+            }
+        }
+    }
+
+    private class TraceBuilt(val group: GroupNode, val result: TraceResult, val preview: ImageBitmap?)
+
+    /** İzin önizlemesi: şekiller, uzun kenarı en çok 720 piksel olan bir görüntüye çizilir. */
+    private fun renderTracePreview(children: List<PathNode>, width: Int, height: Int): ImageBitmap? = try {
+        val k = minOf(1f, 720f / maxOf(width, height))
+        val w = (width * k).toInt().coerceAtLeast(1)
+        val h = (height * k).toInt().coerceAtLeast(1)
+        val image = ImageBitmap(w, h)
+        val canvas = androidx.compose.ui.graphics.Canvas(image)
+        canvas.scale(k, k)
+        val preview = Document(name = "", artboards = emptyList(), layers = listOf(Layer(name = "", children = children)))
+        DocumentRenderer().draw(canvas.nativeCanvas, preview, artboardColor = null)
+        image
+    } catch (e: Throwable) {
+        null
     }
 
     private fun background(label: String, block: suspend () -> Unit) {

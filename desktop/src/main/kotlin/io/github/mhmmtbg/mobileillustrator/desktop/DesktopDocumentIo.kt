@@ -6,7 +6,13 @@ import io.github.mhmmtbg.mobileillustrator.model.ImageData
 import io.github.mhmmtbg.mobileillustrator.model.artboardBounds
 import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
+import io.github.mhmmtbg.mobileillustrator.trace.PixelImage
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Surface
@@ -93,6 +99,27 @@ class DesktopDocumentIo(private val root: File) : DocumentIo(root) {
         } finally {
             surface.close()
         }
+    }
+
+    override fun decodePixels(image: ImageData, maxSide: Int): PixelImage {
+        val decoded = try { Image.makeFromEncoded(image.bytes) } catch (e: Throwable) { null } ?: throw IOException(tr("Görsel çözülemedi"))
+        val k = minOf(1.0, maxSide.toDouble() / maxOf(decoded.width, decoded.height))
+        val w = (decoded.width * k).toInt().coerceAtLeast(1)
+        val h = (decoded.height * k).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap()
+        bitmap.allocPixels(ImageInfo(w, h, ColorType.BGRA_8888, ColorAlphaType.UNPREMUL))
+        val pixmap = bitmap.peekPixels() ?: throw IOException(tr("Görsel çözülemedi"))
+        decoded.scalePixels(pixmap, SamplingMode.LINEAR, false)
+        val bytes = bitmap.readPixels() ?: throw IOException(tr("Görsel çözülemedi"))
+        bitmap.close()
+        val argb = IntArray(w * h) { i ->
+            val b = bytes[i * 4].toInt() and 0xFF
+            val g = bytes[i * 4 + 1].toInt() and 0xFF
+            val r = bytes[i * 4 + 2].toInt() and 0xFF
+            val a = bytes[i * 4 + 3].toInt() and 0xFF
+            (a shl 24) or (r shl 16) or (g shl 8) or b
+        }
+        return PixelImage(w, h, argb)
     }
 
     override fun decodeImage(bytes: ByteArray): ImageData {

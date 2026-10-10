@@ -15,6 +15,12 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.layout.ContentScale
+import io.github.mhmmtbg.mobileillustrator.editor.TracePreset
+import io.github.mhmmtbg.mobileillustrator.trace.TraceOptions
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -567,4 +573,123 @@ private fun ColorWheel(hue: Float, saturation: Float, value: Float, onChange: (h
         drawCircle(Color.White, 9.dp.toPx(), at, style = Stroke(3.dp.toPx()))
         drawCircle(Color.Black.copy(alpha = 0.6f), 11.dp.toPx(), at, style = Stroke(1.dp.toPx()))
     }
+}
+
+/**
+ * "Vektöre çevir": seçili görseli yollara dönüştürür. Ayarlar değiştikçe sonuç arka planda yeniden hesaplanır ve
+ * önizlemesi gösterilir; "Uygula" önizlemedeki sonucu belgeye ekler.
+ */
+@Composable
+fun TraceDialog(vm: io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel) {
+    val ui = vm.state.trace ?: return
+    val options = ui.options
+    val blackWhite = options.mode == TraceOptions.Mode.BlackWhite
+    AlertDialog(
+        onDismissRequest = vm::cancelTrace,
+        title = { Text(tr("Vektöre çevir")) },
+        text = {
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Önizleme
+                val preview = ui.preview
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFECECEC))
+                        .semantics { contentDescription = tr("İz önizlemesi") },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (preview != null) Image(preview, contentDescription = null, modifier = Modifier.fillMaxSize().padding(6.dp), contentScale = ContentScale.Fit)
+                    if (ui.busy) {
+                        Column(
+                            Modifier.fillMaxSize().background(Color(0xA0000000)).padding(horizontal = 24.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(tr("Hesaplanıyor…"), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(8.dp))
+                            LinearProgressIndicator(progress = { vm.traceProgress }, modifier = Modifier.fillMaxWidth(), color = AppColors.Accent)
+                        }
+                    }
+                }
+                val status = when {
+                    ui.error != null -> ui.error
+                    ui.busy -> " "
+                    else -> tr("%s renk · %s şekil · %s düğüm", ui.colors, ui.shapes, ui.anchors)
+                }
+                Text(status, Modifier.semantics { contentDescription = tr("İz özeti") }, style = MaterialTheme.typography.labelMedium, color = if (ui.error != null) Color(0xFFFF8A8A) else AppColors.OnPanelMuted)
+                if (!ui.busy && ui.anchors > 30_000) {
+                    Text(tr("Sonuç çok ayrıntılı; düzenleme yavaşlayabilir. Ayrıntıyı ya da renk sayısını azaltmayı dene."), style = MaterialTheme.typography.bodySmall)
+                }
+
+                // Hazır ayarlar
+                Text(tr("Hazır ayar"), style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (preset in TracePreset.entries) {
+                        val on = ui.preset == preset
+                        Text(
+                            tr(preset.label),
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (on) AppColors.Accent else AppColors.PanelRaised)
+                                .clickable(role = Role.RadioButton) { vm.setTracePreset(preset) }
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            color = if (on) Color(0xFF2B1A0E) else AppColors.OnPanel,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+
+                @Composable
+                fun setting(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+                    Text("$label: $valueText", style = MaterialTheme.typography.labelMedium)
+                    Slider(value.coerceIn(range.start, range.endInclusive), onChange, valueRange = range, modifier = Modifier.semantics { contentDescription = label })
+                }
+                if (blackWhite) {
+                    val auto = options.threshold == null
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) {
+                        vm.updateTrace(options.copy(threshold = if (auto) 0.5 else null), ui.detail)
+                    }) {
+                        Checkbox(auto, null)
+                        Text(tr("Eşiği kendiliğinden seç"))
+                    }
+                    if (!auto) {
+                        setting(tr("Eşik"), "%${((options.threshold ?: 0.5) * 100).toInt()}", (options.threshold ?: 0.5).toFloat(), 0.05f..0.95f) {
+                            vm.updateTrace(options.copy(threshold = (it * 100).toInt() / 100.0), ui.detail)
+                        }
+                    }
+                } else {
+                    setting(tr("Renk sayısı"), options.colors.toString(), options.colors.toFloat(), 2f..32f) {
+                        vm.updateTrace(options.copy(colors = it.toInt()), ui.detail)
+                    }
+                }
+                setting(tr("Ayrıntı"), "${ui.detail} px", ui.detail.toFloat(), 200f..1600f) {
+                    vm.updateTrace(options, (it / 20).toInt() * 20)
+                }
+                setting(tr("Leke temizliği"), "${options.speckle} px", options.speckle.toFloat(), 0f..64f) {
+                    vm.updateTrace(options.copy(speckle = it.toInt()), ui.detail)
+                }
+                setting(tr("Yumuşaklık"), "%.1f".format(options.smoothness), options.smoothness.toFloat(), 0.4f..2.5f) {
+                    vm.updateTrace(options.copy(smoothness = (it * 10).toInt() / 10.0), ui.detail)
+                }
+                setting(tr("Köşe yuvarlama"), "%${(options.cornerThreshold / 1.34 * 100).toInt()}", options.cornerThreshold.toFloat(), 0.4f..1.34f) {
+                    vm.updateTrace(options.copy(cornerThreshold = (it * 100).toInt() / 100.0), ui.detail)
+                }
+                if (!blackWhite) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) {
+                        vm.updateTrace(options.copy(ignoreBackground = !options.ignoreBackground), ui.detail)
+                    }) {
+                        Checkbox(options.ignoreBackground, null)
+                        Text(tr("Zemin rengini izleme"))
+                    }
+                }
+                Text(tr("Özgün görsel silinmez, gizlenir; katman panelinden yeniden gösterebilirsin."), style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = vm::applyTrace, enabled = !ui.busy && ui.error == null && ui.shapes > 0) { Text(tr("Uygula")) }
+        },
+        dismissButton = { TextButton(onClick = vm::cancelTrace) { Text(tr("Vazgeç")) } },
+    )
 }

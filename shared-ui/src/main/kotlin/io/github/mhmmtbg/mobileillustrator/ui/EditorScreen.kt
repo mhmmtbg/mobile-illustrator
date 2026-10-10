@@ -66,6 +66,7 @@ import io.github.mhmmtbg.mobileillustrator.editor.Tool
 import io.github.mhmmtbg.mobileillustrator.model.Align
 import io.github.mhmmtbg.mobileillustrator.model.GradientSpec
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
+import io.github.mhmmtbg.mobileillustrator.model.ImageNode
 import io.github.mhmmtbg.mobileillustrator.render.BooleanOp
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
@@ -223,6 +224,7 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
     state.textPrompt?.let {
         TextDialog(it, vm.fonts, onLoadFont = { host.pickFont(vm::importFont) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
     }
+    if (state.trace != null) TraceDialog(vm)
     if (state.warnings.isNotEmpty()) WarningsDialog(state.warnings, vm::dismissWarnings)
     state.crashReport?.let { report ->
         CrashDialog(
@@ -395,6 +397,7 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
             if (nodes.size >= 2) actions += tr("Şekil") to { mode = 2 }
             actions += tr("Dönüştür") to onTransform
             if (single is GroupNode && single.clip != null) actions += tr("Maskeyi bırak") to vm::releaseClippingMask
+            if (single is ImageNode) actions += tr("Vektöre çevir") to vm::startTrace
             if (single is TextNode) {
                 actions += tr("Metni düzenle") to vm::editSelectedText
                 actions += tr("Yola çevir") to vm::outlineSelectedText

@@ -13,6 +13,7 @@ DRAWING AND EDITING
 • Align, distribute, and snap with smart guides
 • Shape operations: unite, subtract, intersect, exclude; clipping masks
 • Group, arrange, duplicate, 200 steps of undo
+• Vectorize: turn a logo, drawing or photo into editable paths
 
 COLOUR AND TEXT
 • Solid colours, linear and radial gradients, opacity; blend modes in a file are kept

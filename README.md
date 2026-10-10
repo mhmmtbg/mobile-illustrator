@@ -48,6 +48,18 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 - Renk seçici: renk tekerleği ve parlaklık, renk kodu (#RRGGBB) ve R/G/B değerleri; baskı için CMYK modu.
 - Metin: çok satır, hizalama, satır aralığı, kalın/eğik, kendi `.ttf`/`.otf` fontunu yükleme, yola çevirme.
 - Grupla, grubu çöz, çoğalt, sıralama, geri al/yinele, görsel yerleştirme.
+- Seçim varken silme düğmesi alt çubuğun sonunda sabit durur.
+
+**Vektöre çevirme (görsel izleme)**
+- Yerleştirilen bir görsel seçiliyken "Vektöre çevir": görsel, renklerine göre ayrılmış yollara dönüşür.
+- Hazır ayarlar: siyah-beyaz (imza, taranmış çizim), logo / çizim, fotoğraf. Renk sayısı, ayrıntı, leke
+  temizliği, yumuşaklık ve köşe yuvarlama ayarlanır; sonuç uygulanmadan önce önizlenir.
+- Düz kenarlar düz, köşeler keskin, yaylar az düğümlü eğriler olarak çıkar; şekiller alttan üste dizilir ve
+  aralarında boşluk kalmaz. Özgün görsel silinmez, gizlenir.
+- Logo ve çizimlerde temiz sonuç verir. Fotoğraflar posterleştirilmiş görünür ve binlerce düğüm üretir.
+
+**Kalabalık belgeler:** binlerce nesneli belgede kaydırma, seçme ve sürükleme akıcı kalsın diye belge bir
+görüntüye çizilip önbellekten gösterilir; kesin çizim arka planda hazırlanır.
 
 **Gezinme:** iki parmakla kaydır ve yakınlaştır. Karmaşık belgelerde hareket sırasında önbellekten
 çizilir, parmaklar kalkınca yeniden keskinleşir; görünmeyen nesneler çizilmez.
@@ -96,7 +108,7 @@ Gereksinimler ve sınırlar:
 | `app` | Android uygulaması | Android'e özgü işler: dosya seçiciler, satın alma, reklam |
 | `desktop` | Masaüstü uygulaması (Compose Desktop) | Windows sürümü: pencere, kısayollar, Skia ile çizim |
 | `shared-ui` | Ortak kaynak klasörü | Ekranlar (Jetpack Compose) ve düzenleyici mantığı; `app` ve `desktop` aynı kaynakları derler |
-| `core-model` | Saf Kotlin | Belge, katman, yol, geometri, isabet testi, yol düzenleme, geçmiş, çeviriler |
+| `core-model` | Saf Kotlin | Belge, katman, yol, geometri, isabet testi, yol düzenleme, geçmiş, çeviriler, görsel izleme (`trace`) |
 | `core-render` | Android kitaplığı | Belgeyi `android.graphics.Canvas` üzerine çizer |
 | `io-ai` | Saf Kotlin | PDF okuyucu ve yazıcı, .ai içe/dışa aktarma |
 | `io-svg` | Saf Kotlin | SVG içe/dışa aktarma |
