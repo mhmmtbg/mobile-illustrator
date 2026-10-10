@@ -352,6 +352,7 @@ object L10n {
         "Yapıştır" to "Paste",
         "Yapıştırıldı" to "Pasted",
         "Çoklu seçim" to "Multi-select",
+        "Seçim eylemleri" to "Selection actions",
     )
 }
 

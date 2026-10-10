@@ -536,10 +536,15 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+    // Eylemler değişince (başka tür nesne seçildi, alt menü açıldı) satır baştan gösterilir.
+    val scroll = rememberScrollState()
+    val shown = actions.joinToString("|") { it.first }
+    LaunchedEffect(shown) { scroll.scrollTo(0) }
     Row(
         Modifier
             .weight(1f)
-            .horizontalScroll(rememberScrollState())
+            .semantics { contentDescription = tr("Seçim eylemleri") }
+            .horizontalScroll(scroll)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {

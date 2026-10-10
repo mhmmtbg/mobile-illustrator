@@ -64,6 +64,24 @@ expect() { dump; local v; v=$(node "$1" "$2") || fail "Öğe bulunamadı: $1"; [
 wait_for() { for _ in $(seq 1 40); do if has "$1"; then return 0; fi; sleep 1; done; fail "Beklenen öğe gelmedi: $1"; }
 wait_gone() { for _ in $(seq 1 60); do if ! has "$1"; then return 0; fi; sleep 1; done; fail "Hâlâ ekranda: $1"; }
 # Açılan uyarı penceresini (varsa) kapatır.
+# Seçim çubuğundaki eylemler yatay kayar; aranan eylem görünmüyorsa çubuk sola kaydırılarak bulunur.
+bar_find() {
+  local xy y
+  if has "$1"; then return 0; fi
+  # Önce çubuğun başına dönülür, sonra adım adım sola kaydırılır.
+  xy=$(node "Seçim eylemleri" center) || return 1
+  y=${xy##* }
+  adb shell input swipe $((W * 20 / 100)) "$y" $((W * 90 / 100)) "$y" 150
+  adb shell input swipe $((W * 20 / 100)) "$y" $((W * 90 / 100)) "$y" 150
+  sleep 1
+  for _ in 1 2 3 4 5 6; do
+    if has "$1"; then return 0; fi
+    adb shell input swipe $((W * 70 / 100)) "$y" $((W * 35 / 100)) "$y" 500
+    sleep 1
+  done
+  return 1
+}
+bar_tap() { bar_find "$1" || fail "Seçim çubuğunda bulunamadı: $1"; tap "$1"; }
 dismiss() { if has "Tamam"; then tap "Tamam"; fi; }
 
 adb install -r "$APK"
@@ -124,11 +142,11 @@ fi
 tap "Seçim"
 adb shell input tap $((W * 46 / 100)) $((H * 44 / 100))
 sleep 1
-has "Çoğalt" || fail "dokununca nesne seçilmedi"
+bar_find "Çoğalt" || fail "dokununca nesne seçilmedi"
 shot 05-secim
 adb shell input swipe $((W * 46 / 100)) $((H * 44 / 100)) $((W * 52 / 100)) $((H * 52 / 100)) 600
-tap "Çoğalt"
-tap "Öne"
+bar_tap "Çoğalt"
+bar_tap "Öne"
 alive "taşıma ve çoğaltma"
 shot 06-tasima
 
@@ -146,8 +164,8 @@ adb shell input tap $((W * 60 / 100)) $((H * 24 / 100))
 adb shell input swipe $((W * 75 / 100)) $((H * 30 / 100)) $((W * 82 / 100)) $((H * 26 / 100)) 400
 adb shell input tap $((W * 62 / 100)) $((H * 32 / 100))
 shot 07-kalem
-tap "Kapat ve bitir"
-has "Çoğalt" || fail "kalemle çizilen yol seçilmedi"
+bar_tap "Kapat ve bitir"
+bar_find "Çoğalt" || fail "kalemle çizilen yol seçilmedi"
 
 tap "Kurşun kalem"
 adb shell input swipe $((W * 15 / 100)) $((H * 66 / 100)) $((W * 80 / 100)) $((H * 70 / 100)) 700
@@ -159,7 +177,7 @@ wait_for "Metin ekle"
 adb shell input text "Merhaba"
 sleep 1
 tap "Tamam"
-has "Metni düzenle" || fail "metin eklenmedi"
+bar_find "Metni düzenle" || fail "metin eklenmedi"
 shot 08-cizimler
 
 # 5) Doğrudan seçim: kalemle çizilen yolun düğümünü taşı
@@ -173,15 +191,15 @@ alive "düğüm düzenleme"
 # 6) Tümünü seç, grupla, geri al/yinele
 tap "Dosya menüsü"
 tap "Tümünü seç"
-tap "Grupla"
-has "Grubu çöz" || fail "gruplama çalışmadı"
+bar_tap "Grupla"
+bar_find "Grubu çöz" || fail "gruplama çalışmadı"
 tap "Geri al"
 expect "Yinele" enabled true "geri aldıktan sonra yinelenebilmeli"
 tap "Yinele"
 # Geri al/yinele seçimi boşaltır: gruba (içindeki dikdörtgene) dokunarak yeniden seç.
 adb shell input tap $((W * 22 / 100)) $((H * 26 / 100))
 sleep 1
-tap "Grubu çöz"
+bar_tap "Grubu çöz"
 shot 10-grup
 
 # 6b) Dışa aktarma: sistemin dosya kaydetme ekranı üzerinden. Bu ekran Android sürümüne göre değiştiği için
@@ -267,16 +285,16 @@ tap "Elips"
 adb shell input swipe $((W * 50 / 100)) $((H * 48 / 100)) $((W * 80 / 100)) $((H * 62 / 100)) 400
 tap "Dosya menüsü"
 tap "Tümünü seç"
-tap "Hizala"
-tap "Üste"
-tap "‹ Geri"
-tap "Şekil"
-tap "Birleştir"
+bar_tap "Hizala"
+bar_tap "Üste"
+bar_tap "‹ Geri"
+bar_tap "Şekil"
+bar_tap "Birleştir"
 sleep 1
 alive "pathfinder"
 tap "Gradyan"
 tap "Uygula"
-tap "Dönüştür"
+bar_tap "Dönüştür"
 tap "Uygula"
 tap "Katmanlar"
 has "1 nesne" || fail "Birleştir iki şekli tek yola indirmedi"
