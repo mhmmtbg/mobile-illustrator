@@ -311,6 +311,8 @@ sleep 1
 expect "Geri al" enabled true "başka belgeden kopyalanan nesne yapıştırılamadı"
 shot 13b-sekmeler
 tap "Geri al"
+# Yapıştırılan nesne listede gösterilsin diye katman açılmıştı; sonraki adımlar için yeniden kapatılır.
+tap "Gopher içeriği"
 tap "Paneli kapat"
 tap "Adsız sekmesi"
 sleep 1
