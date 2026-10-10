@@ -80,7 +80,11 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
 
     Column(modifier.background(AppColors.Panel).semantics { contentDescription = tr("Katman paneli") }) {
         Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Katmanlar"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = AppColors.OnPanel)
+            Text(tr("Katmanlar"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = AppColors.OnPanel, maxLines = 1)
+            // Çoklu seçim: açıkken satırlara dokunmak seçime ekler; seçilenler kopyalanıp başka belgeye yapıştırılabilir.
+            BarButton(AppIcons.MultiSelect, tr("Çoklu seçim"), active = state.multiSelect, onClick = vm::toggleMultiSelect)
+            BarButton(AppIcons.Copy, tr("Seçimi kopyala"), enabled = state.selection.isNotEmpty() || state.layerSelection.isNotEmpty()) { vm.copySelection() }
+            BarButton(AppIcons.Paste, tr("Panodan yapıştır"), enabled = vm.canPaste, onClick = vm::paste)
             BarButton(AppIcons.Add, tr("Katman ekle"), onClick = vm::addLayer)
             BarButton(AppIcons.Close, tr("Paneli kapat"), onClick = vm::toggleLayersPanel)
         }
@@ -130,12 +134,13 @@ private fun LayerRow(vm: EditorViewModel, row: PanelRow.OfLayer, onRename: () ->
     val layer = row.layer
     val active = state.activeLayerId == layer.id
     val open = layer.id in state.expanded
+    val checked = layer.id in state.layerSelection
     var menu by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .background(if (active) AppColors.PanelRaised else Color.Transparent),
+            .background(if (checked) AppColors.Selection.copy(alpha = 0.22f) else if (active) AppColors.PanelRaised else Color.Transparent),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(if (active) AppColors.Accent else Color.Transparent))
@@ -152,13 +157,18 @@ private fun LayerRow(vm: EditorViewModel, row: PanelRow.OfLayer, onRename: () ->
             Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .clickable(role = Role.Tab) { vm.setActiveLayer(layer.id) }
-                .semantics { selected = active }
+                .clickable(role = if (state.multiSelect) Role.Checkbox else Role.Tab) {
+                    if (state.multiSelect) vm.toggleLayerSelected(layer.id) else vm.setActiveLayer(layer.id)
+                }
+                .semantics { selected = if (state.multiSelect) checked else active }
                 .padding(horizontal = 4.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
         ) {
             Text(trName(layer.name), color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(tr("%s nesne", layer.children.size), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+        if (state.multiSelect) {
+            Icon(if (checked) AppIcons.Checked else AppIcons.Unchecked, null, Modifier.size(20.dp), tint = if (checked) AppColors.Accent else AppColors.OnPanelMuted)
         }
         Box {
             Box(
@@ -215,9 +225,19 @@ private fun NodeRow(vm: EditorViewModel, row: PanelRow.OfNode) {
             Spacer(Modifier.width(28.dp))
         }
         Row(
-            Modifier.weight(1f).fillMaxHeight().clickable(role = Role.Button) { vm.selectNode(node.id) }.semantics { selected = isSelected },
+            Modifier.weight(1f).fillMaxHeight()
+                .clickable(role = if (state.multiSelect) Role.Checkbox else Role.Button) {
+                    if (state.multiSelect) vm.toggleNodeSelected(node.id) else vm.selectNode(node.id)
+                }
+                .semantics { selected = isSelected },
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (state.multiSelect) {
+                Icon(
+                    if (isSelected) AppIcons.Checked else AppIcons.Unchecked, null, Modifier.padding(end = 8.dp).size(18.dp),
+                    tint = if (isSelected) AppColors.Accent else AppColors.OnPanelMuted,
+                )
+            }
             Text(
                 if (unnamed) kind else trName(node.name),
                 Modifier.weight(1f),

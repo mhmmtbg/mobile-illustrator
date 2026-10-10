@@ -2,7 +2,9 @@ Telefonunda ve tabletinde katmanlı vektör çizim. Illustrator (.ai), PDF ve SV
 
 DOSYALAR
 • .ai (PDF uyumlu), .pdf ve .svg dosyalarını açar; dosya yöneticisinden "birlikte aç" ile de çalışır
-• Dosyadaki katmanlar adları, görünürlükleri ve kilitleriyle gelir; çalışma yüzeyleri korunur
+• Dosyadaki katmanlar adları ve görünürlükleriyle gelir; çalışma yüzeyleri korunur
+• Sekmeler: birden çok belge aynı anda açık kalır; nesneleri ve katmanları belgeler arasında kopyala-yapıştır
+• Dışarıdan ekle: başka bir .ai, PDF ya da SVG dosyasının katmanlarını açık belgeye ekle
 • .ai, PDF, SVG ve saydam zeminli PNG olarak kaydeder
 • Belgelerim: tüm çalışmaların küçük resimleriyle tek yerde; otomatik kayıt sayesinde hiçbir şey kaybolmaz
 
@@ -19,7 +21,7 @@ RENK VE METİN
 • Düz renk, doğrusal ve dairesel gradyan, opaklık; dosyadaki karışım modları korunur
 • Kontur kalınlığı, uç ve köşe biçimleri, kesikli çizgi
 • Renk tekerleği ve renk kodu; baskı için CMYK renk seçimi; dosyadaki CMYK ve spot renkler değerleriyle korunur
-• Çok satırlı metin, hizalama, satır aralığı; font seçimi ve kendi .ttf/.otf fontunu yükleme; metni yola çevir
+• Çok satırlı metin, hizalama, satır aralığı; önizlemeli font listesi, 40 hazır font ve kendi .ttf/.otf fontunu yükleme; metni yola çevir
 • Metin eğme: yay, kemer, dalga, şişkin, yükselen
 
 TABLET VE TELEFON

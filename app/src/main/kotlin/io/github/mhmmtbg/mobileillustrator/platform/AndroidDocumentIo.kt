@@ -17,6 +17,7 @@ import io.github.mhmmtbg.mobileillustrator.model.tr
 import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 import io.github.mhmmtbg.mobileillustrator.trace.PixelImage
 import java.io.ByteArrayOutputStream
+import io.github.mhmmtbg.mobileillustrator.editor.BundledFonts
 import java.io.File
 import java.io.IOException
 
@@ -32,8 +33,13 @@ class AndroidDocumentIo(private val app: Application) : DocumentIo(app.filesDir)
 
     private fun typeface(name: String): Typeface? = synchronized(typefaces) {
         typefaces.getOrPut(name) {
-            val file = fonts.fileOf(name) ?: return@getOrPut null
-            try { Typeface.createFromFile(file) } catch (e: RuntimeException) { null }
+            try {
+                // Önce kullanıcının yüklediği font, yoksa uygulamayla gelen aynı adlı font.
+                fonts.fileOf(name)?.let { Typeface.createFromFile(it) }
+                    ?: BundledFonts.assetPath(name)?.let { Typeface.createFromAsset(app.assets, it) }
+            } catch (e: RuntimeException) {
+                null
+            }
         }
     }
 

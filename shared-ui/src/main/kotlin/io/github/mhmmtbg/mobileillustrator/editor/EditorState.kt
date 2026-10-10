@@ -110,6 +110,9 @@ data class TraceUi(
     val error: String? = null,
 )
 
+/** Sekme şeridindeki bir belge. */
+data class TabInfo(val id: String, val name: String, val active: Boolean, val unsaved: Boolean)
+
 /** Açık belgenin depodaki kimliği ve (varsa) bağlı olduğu dış dosya. */
 data class DocSession(
     val id: String,
@@ -160,6 +163,10 @@ data class EditorState(
     val gallery: List<StoredDocument>? = null,
     /** Doluysa "Vektöre çevir" penceresi açıktır. */
     val trace: TraceUi? = null,
+    /** Katman panelinde çoklu seçim kipi: satıra dokunmak seçime ekler ya da seçimden çıkarır. */
+    val multiSelect: Boolean = false,
+    /** Katman panelinde bütün olarak seçilmiş katmanlar (kopyalanırken katman olarak alınırlar). */
+    val layerSelection: Set<String> = emptySet(),
 ) {
     val document: Document get() = preview ?: history.present
 }

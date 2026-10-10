@@ -101,6 +101,16 @@ private fun handleShortcut(event: KeyEvent, vm: EditorViewModel, host: DesktopHo
             Key.O -> host.pickDocument(vm::open)
             Key.A -> vm.selectAll()
             Key.D -> vm.duplicateSelection()
+            Key.C -> vm.copySelection()
+            Key.X -> vm.cutSelection()
+            Key.V -> vm.paste()
+            Key.W -> vm.closeTab(vm.state.session.id)
+            Key.Tab -> vm.tabs.let { tabs ->
+                // Ctrl+Tab sonraki, Ctrl+Shift+Tab önceki sekmeye geçer.
+                val i = tabs.indexOfFirst { it.active }
+                if (tabs.size > 1 && i >= 0) vm.switchTab(tabs[(i + (if (event.isShiftPressed) tabs.size - 1 else 1)) % tabs.size].id)
+            }
+            Key.I -> if (event.isShiftPressed) host.pickDocument(vm::importInto) else return false
             Key.G -> if (event.isShiftPressed) vm.ungroupSelection() else vm.groupSelection()
             Key.Zero -> vm.fitToScreen()
             else -> return false

@@ -280,6 +280,23 @@ tap "Dönüştür"
 tap "Uygula"
 tap "Katmanlar"
 has "1 nesne" || fail "Birleştir iki şekli tek yola indirmedi"
+# 9c) Sekmeler ve pano: yeni belge ayrı sekmede açılmış olmalı; kopyalanan şekil öbür belgeye yapıştırılır
+has "Gopher sekmesi" || fail "yeni belge ayrı sekmede açılmadı (önceki belge kapandı)"
+tap "Seçimi kopyala"
+tap "Paneli kapat"
+tap "Gopher sekmesi"
+sleep 2
+expect "Geri al" enabled false "sekmeye dönünce belge değişmemiş olmalı"
+tap "Katmanlar"
+tap "Panodan yapıştır"
+sleep 1
+expect "Geri al" enabled true "başka belgeden kopyalanan nesne yapıştırılamadı"
+shot 13b-sekmeler
+tap "Geri al"
+tap "Paneli kapat"
+tap "Adsız sekmesi"
+sleep 1
+tap "Katmanlar"
 tap "Paneli kapat"
 shot 13a-birlestir
 alive "araçlar"
@@ -319,7 +336,7 @@ if [ -f "$STRESS" ]; then
   for i in 1 2 3; do
     adb shell input swipe $((W * 50 / 100)) $((H * 45 / 100)) $((W * (30 + i * 10) / 100)) $((H * (35 + i * 5) / 100)) 900
   done
-  adb shell input swipe $((W * 5 / 100)) $((H * 13 / 100)) $((W * 95 / 100)) $((H * 20 / 100)) 600
+  adb shell input swipe $((W * 5 / 100)) $((H * 18 / 100)) $((W * 95 / 100)) $((H * 25 / 100)) 600
   sleep 1
   # Ana iş parçacığı meşgulken döküm zaman aşımına uğrar; boşalana kadar birkaç kez denenir.
   for wait in 0 5 10 20; do

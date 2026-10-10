@@ -28,12 +28,19 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 
 **Belgeler**
 - Belgelerim: tüm çalışmaların küçük resimleriyle listelenir; yeni belge açmak eskisini silmez.
+- Sekmeler: "Aç" ve "Yeni belge" açık belgeyi kapatmaz, yeni sekme ekler (en çok 8 sekme). Sekmeyi kapatmak
+  belgeyi silmez; son hali Belgelerim'de durur.
+- Dışarıdan ekle: bir `.ai`, `.pdf` ya da `.svg` dosyasının katmanları açık belgeye, çalışma yüzeyinin ortasına eklenir.
+- Kopyala / kes / yapıştır belgeler arasında da çalışır: bir sekmede kopyalanan nesne ya da katman öbür sekmeye yapıştırılır.
 - Aç: `.ai` (Illustrator 9 ve sonrası, PDF uyumlu), `.pdf`, `.svg`. Dosya yöneticisinden "birlikte aç" da çalışır.
 - Kaydet açtığın dosyanın üzerine yazar; Farklı kaydet yeni bir `.ai` oluşturur. PDF, SVG ve PNG (saydam zemin) dışa aktarılır.
 - Otomatik kayıt: uygulama kapansa da çalışma yerinde kalır. Çökme olursa bir sonraki açılışta rapor paylaşma seçeneği çıkar; rapor kendiliğinden gönderilmez.
 
 **Katmanlar**
-- Dosyadaki katmanlar adları, görünürlükleri ve kilitleriyle gelir; çalışma yüzeyleri korunur.
+- Dosyadaki katmanlar adları ve görünürlükleriyle gelir; çalışma yüzeyleri korunur. Katman kilitleri bu uygulamanın
+  kaydettiği dosyalarda korunur (başka programların PDF'lerindeki "kilitli" işareti düzenleme kilidi değildir, yok sayılır).
+- Çoklu seçim: paneldeki çoklu seçim düğmesi açıkken satırlara dokunmak nesneleri ve bütün katmanları seçime ekler;
+  seçilenler kopyalanır, başka belgeye yapıştırılır ya da silinir.
 - Katman ekle, sil, yeniden adlandır, sırala, gizle, kilitle; nesneleri katmanlar arasında taşı.
 - Her katmanın içindeki nesne ağacı (gruplar, kırpma grupları) panelden gezilir ve seçilir.
 - Tuvalde seçilen nesne "Katmanda göster" ile listede bulunur; listeden seçilen nesne tuvalde seçilir ve ekran dışındaysa görünüme getirilir.
@@ -41,19 +48,20 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
   Katmanın menüsünden o katmandaki tüm nesneler seçilebilir.
 
 **Çizim ve düzenleme**
-- Seçim: taşı, ölçekle, döndür, çerçeveyle çoklu seç; sayısal genişlik/yükseklik/açı, yatay ve dikey çevirme.
+- Seçim: taşı, ölçekle, döndür; seçim kutusu dokunduğu bütün nesneleri seçer (tamamı içinde olmasa da); sayısal genişlik/yükseklik/açı, yatay ve dikey çevirme.
 - Doğrudan seçim: düğümleri ve tutamaçları sürükle, yola dokunarak düğüm ekle, sil, köşe/yumuşak çevir.
 - Kalem (Bezier), kurşun kalem, dikdörtgen, elips, çizgi, metin, damlalık; yalnızca tuvali kaydıran el aracı.
 - Hizalama ve dağıtma, kenarlara ve merkezlere yakalama (kılavuz çizgileriyle).
 - Şekil işlemleri: birleştir, öndekini çıkar, kesiştir, dışla. Kırpma maskesi yap/bırak.
 - Dolgu ve kontur: düz renk, doğrusal/dairesel gradyan (duraklar ve açı), opaklık; kontur kalınlığı, uç, köşe, kesikli çizgi.
 - Renk seçici: renk tekerleği ve parlaklık, renk kodu (#RRGGBB) ve R/G/B değerleri; baskı için CMYK modu.
-- Metin: çok satır, hizalama, satır aralığı, kalın/eğik; font listesinden seçim (cihazın fontları ve kendi
-  yüklediğin `.ttf`/`.otf` dosyaları); yola çevirme.
+- Metin: çok satır, hizalama, satır aralığı, kalın/eğik; font listesinde her ad kendi fontuyla yazılır. Cihazın
+  fontlarına ek olarak uygulamayla 40 açık lisanslı font gelir (hepsi Türkçe harfleri içerir; lisans metinleri
+  `app/src/main/assets/fonts/licenses` klasöründe), kendi `.ttf`/`.otf` dosyanı da yükleyebilirsin; yola çevirme.
 - Metin eğme: yay, kemer, dalga, şişkin, yükselen. Metin düzenlenebilir kalır; eğim alt çubuktaki sürgüyle,
   tuvalde görerek ayarlanır.
 - Grupla, grubu çöz, çoğalt, sıralama, geri al/yinele, görsel yerleştirme.
-- Seçim varken silme düğmesi alt çubuğun sonunda sabit durur.
+- Seçim varken alt çubuktaki eylemler simgeleriyle görünür; silme düğmesi çubuğun sonunda sabit durur.
 
 **Vektöre çevirme (görsel izleme)**
 - Yerleştirilen bir görsel seçiliyken "Vektöre çevir": görsel, renklerine göre ayrılmış yollara dönüşür.
@@ -73,7 +81,7 @@ görüntüye çizilip önbellekten gösterilir; kesin çizim arka planda hazırl
 
 **Windows:** aynı ekranlar ve aynı dosya desteği. Fare tekerleği yakınlaştırır, sağ ya da orta tuşla
 sürüklemek kaydırır. Kısayollar: Ctrl+Z / Ctrl+Shift+Z, Ctrl+S, Ctrl+O, Ctrl+A, Ctrl+D, Ctrl+G,
-Ctrl+0 (sığdır), Delete; araçlar V, A, P, N, M, L, T, I, H (el). Komut satırında dosya yolu verilirse o dosya açılır.
+Ctrl+0 (sığdır), Ctrl+C / Ctrl+X / Ctrl+V, Ctrl+Shift+I (dışarıdan ekle), Ctrl+Tab (sonraki sekme), Ctrl+W (sekmeyi kapat), Delete; araçlar V, A, P, N, M, L, T, I, H (el). Komut satırında dosya yolu verilirse o dosya açılır.
 
 **Reklam ve satın alma (yalnızca Android):** uygulama şerit reklam gösterir. Dosya menüsündeki
 "Geliştiriciye kahve ısmarla" tek seferlik bir Google Play satın almasıdır; alınınca reklamlar kalıcı

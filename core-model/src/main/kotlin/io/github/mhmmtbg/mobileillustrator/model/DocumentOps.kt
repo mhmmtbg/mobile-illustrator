@@ -135,6 +135,20 @@ fun Document.nodesIn(rect: Rect): List<Node> {
     return out
 }
 
+/** [rect] ile kesişen ama kilitli olduğu için (kendisi ya da katmanı) seçilemeyen görünür üst düzey düğümlerin sayısı. */
+fun Document.lockedNodesIn(rect: Rect): Int {
+    var count = 0
+    val index = DocIndex.of(this)
+    for (layer in layers) {
+        if (!layer.visible) continue
+        for (n in layer.children) {
+            if (!n.visible || !(layer.locked || n.locked)) continue
+            if (index.bounds(n)?.intersects(rect) == true) count++
+        }
+    }
+    return count
+}
+
 // ---- Sıra ----------------------------------------------------------------
 
 enum class ZMove { Forward, Backward, Front, Back }

@@ -136,4 +136,84 @@ object AppIcons {
     }
     val Up by lazy { icon("Up", "M4,12l1.41,1.41L11,7.83V20h2V7.83l5.58,5.59L20,12l-8,-8 -8,8z") }
     val Down by lazy { icon("Down", "M20,12l-1.41,-1.41L13,16.17V4h-2v12.17l-5.58,-5.59L4,12l8,8 8,-8z") }
+
+    // ---- Seçim çubuğu ve pano simgeleri ----------------------------------------
+    // Basit geometrik simgeler dikdörtgenlerden kurulur: r = dolu dikdörtgen, frame = çerçeve (dört şerit).
+
+    private fun r(x: Number, y: Number, w: Number, h: Number) = "M$x,$y h$w v$h h-$w z "
+    private fun frame(x: Double, y: Double, w: Double, h: Double, t: Double = 1.5) =
+        r(x, y, w, t) + r(x, y + h - t, w, t) + r(x, y + t, t, h - 2 * t) + r(x + w - t, y + t, t, h - 2 * t)
+    private fun circle(cx: Number, cy: Double, rad: Number) = "M$cx,${cy - rad.toDouble()} a$rad,$rad 0 1 0 0.01,0 z "
+
+    val Copy by lazy {
+        icon("Copy", "M16,1H4C2.9,1 2,1.9 2,3v14h2V3h12V1zM19,5H8C6.9,5 6,5.9 6,7v14c0,1.1 0.9,2 2,2h11c1.1,0 2,-0.9 2,-2V7C21,5.9 20.1,5 19,5zM19,21H8V7h11V21z")
+    }
+    val Paste by lazy {
+        icon(
+            "Paste",
+            "M19,2h-4.18C14.4,0.84 13.3,0 12,0c-1.3,0 -2.4,0.84 -2.82,2H5C3.9,2 3,2.9 3,4v16c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V4" +
+                "C21,2.9 20.1,2 19,2zM12,2c0.55,0 1,0.45 1,1s-0.45,1 -1,1 -1,-0.45 -1,-1 0.45,-1 1,-1zM19,20H5V4h2v3h10V4h2V20z",
+        )
+    }
+    val Cut by lazy {
+        icon(
+            "Cut",
+            "M9.64,7.64c0.23,-0.5 0.36,-1.05 0.36,-1.64 0,-2.21 -1.79,-4 -4,-4S2,3.79 2,6s1.79,4 4,4c0.59,0 1.14,-0.13 1.64,-0.36L10,12" +
+                "l-2.36,2.36C7.14,14.13 6.59,14 6,14c-2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4c0,-0.59 -0.13,-1.14 -0.36,-1.64L12,14l7,7h3v-1" +
+                "L9.64,7.64zM6,8c-1.1,0 -2,-0.89 -2,-2s0.9,-2 2,-2 2,0.89 2,2 -0.9,2 -2,2zM6,20c-1.1,0 -2,-0.89 -2,-2s0.9,-2 2,-2 2,0.89 2,2 " +
+                "-0.9,2 -2,2zM12,12.5c-0.28,0 -0.5,-0.22 -0.5,-0.5s0.22,-0.5 0.5,-0.5 0.5,0.22 0.5,0.5 -0.22,0.5 -0.5,0.5zM19,3l-6,6 2,2 7,-7V3z",
+        )
+    }
+    val Checked by lazy {
+        icon("Checked", "M19,3H5C3.89,3 3,3.9 3,5v14c0,1.1 0.89,2 2,2h14c1.11,0 2,-0.9 2,-2V5C21,3.9 20.11,3 19,3zM10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z")
+    }
+    val Unchecked by lazy {
+        icon("Unchecked", "M19,5v14H5V5h14m0,-2H5c-1.1,0 -2,0.9 -2,2v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2z")
+    }
+    val MultiSelect by lazy {
+        icon("MultiSelect", r(3, 4, 4, 4) + r(9, 5, 12, 2) + r(3, 10, 4, 4) + r(9, 11, 12, 2) + frame(3.0, 16.0, 4.0, 4.0, 1.0) + r(9, 17, 12, 2))
+    }
+    val Check by lazy { icon("Check", "M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z") }
+    val Back by lazy { icon("Back", "M15.41,7.41L14,6l-6,6 6,6 1.41,-1.41L10.83,12z") }
+    val Import by lazy { icon("Import", "M12,3 h1 v8.2 l3.1,-3.1 1.4,1.4 -5.5,5.5 -5.5,-5.5 1.4,-1.4 3.1,3.1 V3 z " + r(4, 17, 16, 2) + r(4, 13, 2, 4) + r(18, 13, 2, 4)) }
+
+    val AlignLeft by lazy { icon("AlignLeft", r(3, 3, 2, 18) + r(7, 6, 13, 4) + r(7, 14, 8, 4)) }
+    val AlignCenterH by lazy { icon("AlignCenterH", r(11, 3, 2, 18) + r(4, 6, 16, 4) + r(7, 14, 10, 4)) }
+    val AlignRight by lazy { icon("AlignRight", r(19, 3, 2, 18) + r(4, 6, 13, 4) + r(9, 14, 8, 4)) }
+    val AlignTop by lazy { icon("AlignTop", r(3, 3, 18, 2) + r(6, 7, 4, 13) + r(14, 7, 4, 8)) }
+    val AlignCenterV by lazy { icon("AlignCenterV", r(3, 11, 18, 2) + r(6, 4, 4, 16) + r(14, 7, 4, 10)) }
+    val AlignBottom by lazy { icon("AlignBottom", r(3, 19, 18, 2) + r(6, 4, 4, 13) + r(14, 9, 4, 8)) }
+    val DistributeH by lazy { icon("DistributeH", r(3, 3, 2, 18) + r(19, 3, 2, 18) + r(9.5, 7, 5, 10)) }
+    val DistributeV by lazy { icon("DistributeV", r(3, 3, 18, 2) + r(3, 19, 18, 2) + r(7, 9.5, 10, 5)) }
+
+    val Shapes by lazy { icon("Shapes", frame(3.0, 3.0, 13.0, 13.0, 2.0) + frame(8.0, 8.0, 13.0, 13.0, 2.0)) }
+    val Unite by lazy { icon("Unite", "M3,3 H16 V8 H21 V21 H8 V16 H3 Z") }
+    val MinusFront by lazy { icon("MinusFront", "M3,3 H16 V8 H8 V16 H3 Z " + frame(9.5, 9.5, 11.5, 11.5, 1.5)) }
+    val Intersect by lazy { icon("Intersect", frame(3.0, 3.0, 13.0, 13.0, 1.5) + frame(8.0, 8.0, 13.0, 13.0, 1.5) + r(9.5, 9.5, 5, 5)) }
+    val Exclude by lazy { icon("Exclude", r(3, 3, 13, 13) + r(8, 8, 13, 13), evenOdd = true) }
+    val Mask by lazy { icon("Mask", r(3, 3, 18, 18) + circle(12, 12.0, 6), evenOdd = true) }
+    val Unmask by lazy { icon("Unmask", frame(3.0, 3.0, 18.0, 18.0, 1.5) + circle(12, 12.0, 6) + circle(12, 12.0, 4.5), evenOdd = true) }
+    val Transform by lazy {
+        icon("Transform", frame(5.0, 5.0, 14.0, 14.0, 1.5) + r(3, 3, 5, 5) + r(16, 3, 5, 5) + r(3, 16, 5, 5) + r(16, 16, 5, 5))
+    }
+    val Duplicate by lazy {
+        icon("Duplicate", "M3,3 H15 V5 H5 V15 H3 Z " + r(8, 8, 13, 13) + "M13.5,10.5 h2 v3 h3 v2 h-3 v3 h-2 v-3 h-3 v-2 h3 z", evenOdd = true)
+    }
+    val Group by lazy { icon("Group", frame(3.0, 3.0, 18.0, 18.0, 1.5) + r(6.5, 6.5, 5, 5) + r(12.5, 12.5, 5, 5)) }
+    val Ungroup by lazy { icon("Ungroup", frame(3.0, 3.0, 9.0, 9.0, 2.0) + frame(12.0, 12.0, 9.0, 9.0, 2.0)) }
+    val Forward by lazy { icon("Forward", "M12,4 l-7,7 h4.5 v9 h5 v-9 H19 z") }
+    val Backward by lazy { icon("Backward", "M12,20 l-7,-7 h4.5 v-9 h5 v9 H19 z") }
+    val ToFront by lazy { icon("ToFront", r(4, 3, 16, 2) + "M12,7 l-7,7 h4.5 v7 h5 v-7 H19 z") }
+    val ToBack by lazy { icon("ToBack", r(4, 19, 16, 2) + "M12,17 l-7,-7 h4.5 v-7 h5 v7 H19 z") }
+    val Rename by lazy { icon("Rename", frame(2.0, 8.0, 20.0, 8.0, 1.5) + r(6, 4, 1.5, 16) + r(4.5, 4, 4.5, 1.5) + r(4.5, 18.5, 4.5, 1.5)) }
+    val Nodes by lazy { icon("Nodes", r(3, 16, 5, 5) + r(16, 3, 5, 5) + "M7.4,18 L6,16.6 L16.6,6 L18,7.4 Z") }
+    val Picture by lazy { icon("Picture", frame(3.0, 4.0, 18.0, 16.0, 1.5) + "M6,17 l4.5,-6 l3,4 l2,-2.5 l3.5,4.5 z " + circle(8, 8.5, 1.5)) }
+    val Flat by lazy { icon("Flat", r(3, 11, 18, 2)) }
+    val Arc by lazy { icon("Arc", "M3,17 A9,9 0 0 1 21,17 L18.5,17 A6.5,6.5 0 0 0 5.5,17 Z") }
+    val Arch by lazy { icon("Arch", "M3,19 V13 A9,9 0 0 1 21,13 V19 H18.5 V13 A6.5,6.5 0 0 0 5.5,13 V19 Z") }
+    val Wave by lazy { icon("Wave", "M3,12 C6,4 9,4 12,11 C15,18 18,18 21,10 L21,13.5 C18,21.5 15,21.5 12,14.5 C9,7.5 6,7.5 3,15.5 Z") }
+    val Bulge by lazy { icon("Bulge", "M3,12 Q12,2 21,12 Q12,22 3,12 Z M6.5,12 Q12,17.5 17.5,12 Q12,6.5 6.5,12 Z", evenOdd = true) }
+    val Rise by lazy { icon("Rise", "M3,16 L21,5 V8.5 L3,19.5 Z") }
+    val Corner by lazy { icon("Corner", "M3,19 L12,5 L21,19 L18,19 L12,9.7 L6,19 Z") }
+    val Loop by lazy { icon("Loop", circle(12, 12.0, 8) + circle(12, 12.0, 5.5), evenOdd = true) }
 }

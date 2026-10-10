@@ -17,6 +17,7 @@ import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Surface
 import org.jetbrains.skia.Typeface
+import io.github.mhmmtbg.mobileillustrator.editor.BundledFonts
 import java.io.File
 import java.io.IOException
 
@@ -36,8 +37,15 @@ class DesktopDocumentIo(private val root: File) : DocumentIo(root) {
 
     private fun typeface(name: String): Typeface? = synchronized(typefaces) {
         typefaces.getOrPut(name) {
-            val file = fonts.fileOf(name) ?: return@getOrPut null
-            try { FontMgr.default.makeFromFile(file.path) } catch (e: RuntimeException) { null }
+            try {
+                // Önce kullanıcının yüklediği font, yoksa uygulamayla gelen aynı adlı font.
+                fonts.fileOf(name)?.let { FontMgr.default.makeFromFile(it.path) }
+                    ?: BundledFonts.assetPath(name)?.let { FontMgr.default.makeFromData(org.jetbrains.skia.Data.makeFromBytes(assetBytes(it))) }
+            } catch (e: RuntimeException) {
+                null
+            } catch (e: IOException) {
+                null
+            }
         }
     }
 

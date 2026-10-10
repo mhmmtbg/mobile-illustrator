@@ -134,6 +134,7 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                 vm,
                 onNew = { showNew = true },
                 onOpen = ::openFile,
+                onImport = { host.pickDocument(vm::importInto) },
                 onPlaceImage = { host.pickImage(vm::placeImage) },
                 onSave = ::save,
                 onSaveAs = ::saveAs,
@@ -143,6 +144,7 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                 coffee = host.coffee,
                 onCoffee = { showCoffee = true },
             )
+            TabStrip(vm)
             // Reklam şeridi: kahve ısmarlanınca kalkar. Belgelerim açıkken oradaki şerit görünür.
             if (state.gallery == null) host.AdBanner(Modifier.fillMaxWidth().padding(vertical = 4.dp))
             Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -277,6 +279,7 @@ private fun TopBar(
     vm: EditorViewModel,
     onNew: () -> Unit,
     onOpen: () -> Unit,
+    onImport: () -> Unit,
     onPlaceImage: () -> Unit,
     onSave: () -> Unit,
     onSaveAs: () -> Unit,
@@ -312,7 +315,9 @@ private fun TopBar(
                 item(tr("SVG dışa aktar")) { onExport(ExportFormat.Svg) }
                 item(tr("PNG dışa aktar")) { onExport(ExportFormat.Png) }
                 HorizontalDivider()
+                item(tr("Dışarıdan ekle… (.ai, .pdf, .svg)"), onImport)
                 item(tr("Görsel yerleştir…"), onPlaceImage)
+                if (vm.canPaste) item(tr("Yapıştır")) { vm.paste() }
                 item(tr("Belgeyi adlandır…"), onRename)
                 item(tr("Tümünü seç")) { vm.selectAll() }
                 item(if (state.snapping) tr("Yakalama: açık") else tr("Yakalama: kapalı")) { vm.toggleSnapping() }
@@ -345,6 +350,58 @@ private fun TopBar(
         BarButton(AppIcons.Undo, tr("Geri al"), enabled = state.history.canUndo || state.pen != null, onClick = vm::undo)
         BarButton(AppIcons.Redo, tr("Yinele"), enabled = state.history.canRedo && state.pen == null, onClick = vm::redo)
         BarButton(AppIcons.Layers, tr("Katmanlar"), active = state.layersOpen, onClick = vm::toggleLayersPanel)
+    }
+}
+
+/**
+ * Açık belgelerin sekmeleri. Tek belge açıkken yer kaplamaz; "Aç" ve "Yeni belge" açık belgeyi kapatmadan
+ * yeni sekme ekler.
+ */
+@Composable
+private fun TabStrip(vm: EditorViewModel) {
+    val tabs = vm.tabs
+    if (tabs.size < 2) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .height(40.dp)
+            .background(AppColors.Divider)
+            .horizontalScroll(rememberScrollState())
+            .semantics { contentDescription = tr("Açık belgeler") },
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        for (tab in tabs) {
+            val name = trName(tab.name)
+            Row(
+                Modifier
+                    .padding(start = 4.dp, top = 4.dp)
+                    .height(36.dp)
+                    .widthIn(min = 96.dp, max = 220.dp)
+                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                    .background(if (tab.active) AppColors.Pasteboard else AppColors.PanelRaised.copy(alpha = 0.5f))
+                    .clickable(role = Role.Tab) { vm.switchTab(tab.id) }
+                    .semantics { contentDescription = tr("%s sekmesi", name); selected = tab.active }
+                    .padding(start = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    (if (tab.unsaved) "● " else "") + name,
+                    Modifier.weight(1f, fill = false),
+                    color = if (tab.active) AppColors.OnPanel else AppColors.OnPanelMuted,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Box(
+                    Modifier.size(36.dp).clip(CircleShape).clickable(role = Role.Button) { vm.closeTab(tab.id) }
+                        .semantics { contentDescription = tr("%s sekmesini kapat", name) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(AppIcons.Close, null, Modifier.size(16.dp), tint = AppColors.OnPanelMuted)
+                }
+            }
+        }
     }
 }
 
@@ -430,6 +487,9 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
                 actions += tr("Eğ") to { mode = 3 }
                 actions += tr("Yola çevir") to vm::outlineSelectedText
             }
+            actions += tr("Kopyala") to { vm.copySelection(); Unit }
+            actions += tr("Kes") to vm::cutSelection
+            if (vm.canPaste) actions += tr("Yapıştır") to vm::paste
             actions += tr("Çoğalt") to vm::duplicateSelection
             if (nodes.size >= 2) actions += tr("Grupla") to vm::groupSelection
             if (nodes.any { it is GroupNode }) actions += tr("Grubu çöz") to vm::ungroupSelection
@@ -483,23 +543,29 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // Her eylemin yanında simgesi durur (çeviriyle birlikte yeniden eşlenir).
+        val icons = remember(tr("Sil")) { ActionIcons.entries.associate { tr(it.key) to it.value } }
         for ((label, action) in actions) {
-            Text(
-                label,
+            val tint = when (label) {
+                tr("Düğümü sil") -> Color(0xFFFF8A8A)
+                activeLabel -> AppColors.Accent
+                else -> AppColors.OnPanel
+            }
+            Row(
                 Modifier
                     .height(40.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(AppColors.PanelRaised)
                     .clickable(role = Role.Button, onClick = action)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                color = when (label) {
-                    tr("Düğümü sil") -> Color(0xFFFF8A8A)
-                    activeLabel -> AppColors.Accent
-                    else -> AppColors.OnPanel
-                },
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-            )
+                    .padding(start = 10.dp, end = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                icons[label]?.let {
+                    Icon(it, contentDescription = null, modifier = Modifier.size(18.dp), tint = tint)
+                    Spacer(Modifier.width(7.dp))
+                }
+                Text(label, color = tint, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            }
         }
     }
     if (canDelete) {
@@ -512,6 +578,28 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
     }
     }
     }
+}
+
+/** Seçim çubuğundaki eylemlerin simgeleri; anahtarlar kaynak dildeki etiketlerdir. */
+private val ActionIcons: Map<String, ImageVector> by lazy {
+    mapOf(
+        "Bitir" to AppIcons.Check, "Kapat ve bitir" to AppIcons.Loop, "İptal" to AppIcons.Close,
+        "Köşeye çevir" to AppIcons.Corner, "Yumuşat" to AppIcons.Arc, "Düğümü sil" to AppIcons.Delete,
+        "‹ Geri" to AppIcons.Back,
+        "Sola" to AppIcons.AlignLeft, "Yatay ortala" to AppIcons.AlignCenterH, "Sağa" to AppIcons.AlignRight,
+        "Üste" to AppIcons.AlignTop, "Dikey ortala" to AppIcons.AlignCenterV, "Alta" to AppIcons.AlignBottom,
+        "Yatay dağıt" to AppIcons.DistributeH, "Dikey dağıt" to AppIcons.DistributeV,
+        "Eğme yok" to AppIcons.Flat, "Yay" to AppIcons.Arc, "Kemer" to AppIcons.Arch, "Dalga" to AppIcons.Wave,
+        "Şişkin" to AppIcons.Bulge, "Yükselen" to AppIcons.Rise,
+        "Birleştir" to AppIcons.Unite, "Öndekini çıkar" to AppIcons.MinusFront, "Kesiştir" to AppIcons.Intersect,
+        "Dışla" to AppIcons.Exclude, "Maske yap" to AppIcons.Mask, "Maskeyi bırak" to AppIcons.Unmask,
+        "Hizala" to AppIcons.AlignLeft, "Şekil" to AppIcons.Shapes, "Dönüştür" to AppIcons.Transform,
+        "Vektöre çevir" to AppIcons.Picture, "Metni düzenle" to AppIcons.Pencil, "Eğ" to AppIcons.Arc, "Yola çevir" to AppIcons.Nodes,
+        "Kopyala" to AppIcons.Copy, "Kes" to AppIcons.Cut, "Yapıştır" to AppIcons.Paste, "Çoğalt" to AppIcons.Duplicate,
+        "Grupla" to AppIcons.Group, "Grubu çöz" to AppIcons.Ungroup,
+        "Öne" to AppIcons.Forward, "Arkaya" to AppIcons.Backward, "En öne" to AppIcons.ToFront, "En arkaya" to AppIcons.ToBack,
+        "Katmanda göster" to AppIcons.Layers, "Adlandır" to AppIcons.Rename,
+    )
 }
 
 /** Metin eğme biçimleri ve (kaynak dildeki) adları. */

@@ -2,7 +2,9 @@ Layered vector drawing on your phone and tablet. Opens Illustrator (.ai), PDF an
 
 FILES
 • Opens .ai (PDF-compatible), .pdf and .svg files; "Open with" from your file manager works too
-• Layers arrive with their names, visibility and locks; artboards are kept
+• Layers arrive with their names and visibility; artboards are kept
+• Tabs: keep several documents open at once; copy and paste objects and layers between documents
+• Import into document: add the layers of another .ai, PDF or SVG file to the open document
 • Saves as .ai, PDF, SVG and transparent PNG
 • My documents: all your work in one place with thumbnails; autosave means nothing gets lost
 
@@ -19,7 +21,7 @@ COLOUR AND TEXT
 • Solid colours, linear and radial gradients, opacity; blend modes in a file are kept
 • Stroke width, caps and joins, dashed lines
 • Colour wheel and colour codes; CMYK colour picking for print; CMYK and spot colours in a file keep their values
-• Multi-line text, alignment, line spacing; choose a font or load your own .ttf/.otf; convert text to outlines
+• Multi-line text, alignment, line spacing; font list with previews, 40 bundled fonts, or load your own .ttf/.otf; convert text to outlines
 • Text warp: arc, arch, wave, bulge, rise
 
 TABLET AND PHONE

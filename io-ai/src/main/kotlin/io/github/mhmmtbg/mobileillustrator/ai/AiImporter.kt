@@ -135,9 +135,14 @@ object AiImporter {
 
         fun run(): ImportResult {
             val root = file.root
+            val producer = file.string(file.dict(file.trailer["Info"])?.get("Producer"))?.text()
+            val ours = producer == AiExporter.PRODUCER
             file.dict(file.dict(root["OCProperties"])?.get("D"))?.let { cfg ->
                 file.array(cfg["OFF"])?.forEach { (it as? PdfRef)?.let(off::add) }
-                file.array(cfg["Locked"])?.forEach { (it as? PdfRef)?.let(locked::add) }
+                // PDF'teki "Locked" listesi katmanın düzenlemeye kapalı olduğunu değil, görünürlüğünün okuyucuda
+                // değiştirilemeyeceğini söyler; başka programların dosyalarında çoğu zaman bütün katmanları içerir.
+                // Yalnızca bu uygulamanın yazdığı dosyalarda katman kilidi anlamına gelir.
+                if (ours) file.array(cfg["Locked"])?.forEach { (it as? PdfRef)?.let(locked::add) }
             }
             val pages = ArrayList<Page>()
             collectPages(file.dict(root["Pages"]), null, null, pages, HashSet(), 0)
@@ -185,11 +190,10 @@ object AiImporter {
                 }
             }.ifEmpty { listOf(Layer(name = "Katman 1")) }
 
-            val producer = file.string(file.dict(file.trailer["Info"])?.get("Producer"))?.text()
             return ImportResult(
                 Document(name = name, artboards = artboards, layers = layers),
                 warnings.toList(),
-                writtenByThisApp = producer == AiExporter.PRODUCER,
+                writtenByThisApp = ours,
             )
         }
 

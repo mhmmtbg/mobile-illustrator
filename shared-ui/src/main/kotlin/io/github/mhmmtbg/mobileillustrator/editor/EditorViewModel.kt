@@ -48,6 +48,12 @@ import io.github.mhmmtbg.mobileillustrator.model.addNode
 import io.github.mhmmtbg.mobileillustrator.model.anchorAt
 import io.github.mhmmtbg.mobileillustrator.model.artboardBounds
 import io.github.mhmmtbg.mobileillustrator.model.boundsOf
+import io.github.mhmmtbg.mobileillustrator.model.Clip
+import io.github.mhmmtbg.mobileillustrator.model.Pasted
+import io.github.mhmmtbg.mobileillustrator.model.clip
+import io.github.mhmmtbg.mobileillustrator.model.paste
+import io.github.mhmmtbg.mobileillustrator.model.merged
+import io.github.mhmmtbg.mobileillustrator.model.lockedNodesIn
 import io.github.mhmmtbg.mobileillustrator.model.deleteAnchor
 import io.github.mhmmtbg.mobileillustrator.model.duplicate
 import io.github.mhmmtbg.mobileillustrator.model.findLayer
@@ -125,6 +131,26 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
 
     private var canvasSize = Size.Zero
     private var fitPending = true
+
+    // ---- Sekmeler -----------------------------------------------------------
+
+    /** Arka sekmede bekleyen belge: düzenleyici durumu ve görünümüyle birlikte saklanır. */
+    private class Parked(val state: EditorState, val viewport: Viewport, val fitted: Boolean)
+
+    private val parked = HashMap<String, Parked>()
+
+    /** Açık belgelerin sekme sırası (belge kimlikleri); etkin belge de içindedir. */
+    private var tabOrder by mutableStateOf(listOf(state.session.id))
+
+    /** Sekme şeridi için açık belgeler. */
+    val tabs: List<TabInfo>
+        get() {
+            val current = state
+            return tabOrder.mapNotNull { id ->
+                val s = if (id == current.session.id) current else parked[id]?.state ?: return@mapNotNull null
+                TabInfo(id, s.history.present.name, id == current.session.id, s.session.unsaved)
+            }
+        }
 
     /** Görünüm "ekrana sığdır" durumunda mı (kullanıcı kaydırıp yakınlaştırmadıysa). */
     private var fitted = false
@@ -264,6 +290,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             history = h,
             preview = null,
             selection = state.selection.filterTo(HashSet()) { doc.findNode(it) != null },
+            layerSelection = state.layerSelection.filterTo(HashSet()) { doc.findLayer(it) != null },
             nodeEdit = state.nodeEdit?.takeIf { doc.findNode(it.nodeId) is PathNode }?.copy(anchor = null),
             activeLayerId = if (doc.findLayer(state.activeLayerId) != null) state.activeLayerId else doc.layers.last().id,
             session = if (state.session.linkUri != null) state.session.copy(unsaved = true) else state.session,
@@ -379,7 +406,15 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             is Drag.Marquee -> {
                 val rect = state.marquee
                 state = state.copy(marquee = null)
-                if (rect != null) state = state.withSelection(present.nodesIn(rect).mapTo(HashSet()) { it.id })
+                if (rect != null) {
+                    // Kutunun dokunduğu (tamamı içinde olmasa da) bütün nesneler seçilir.
+                    val ids = present.nodesIn(rect).mapTo(HashSet()) { it.id }
+                    state = state.withSelection(ids)
+                    if (ids.isEmpty()) {
+                        val lockedCount = present.lockedNodesIn(rect)
+                        if (lockedCount > 0) state = state.copy(message = tr("Kutudaki %s nesne kilitli; katman panelinden kilidi açın", lockedCount))
+                    }
+                }
             }
             is Drag.Create -> state.preview?.let { p -> commit(p) { it.withSelection(setOf(d.nodeId)) } }
             is Drag.Pencil -> {
@@ -558,7 +593,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
                 state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
                 return
             }
-            state = state.copy(selection = emptySet(), nodeEdit = null)
+            state = state.copy(selection = emptySet(), layerSelection = emptySet(), nodeEdit = null)
             setPen(PenState(newId(), layer.id, listOf(Anchor(p))))
             return
         }
@@ -657,7 +692,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         }
         val hit = doc.hitTestDeep(p, tol)
         state = if (hit == null) {
-            state.copy(selection = emptySet(), nodeEdit = null)
+            state.copy(selection = emptySet(), layerSelection = emptySet(), nodeEdit = null)
         } else {
             state.withSelection(setOf(hit.id)).copy(nodeEdit = if (hit is PathNode) NodeEdit(hit.id) else null)
         }
@@ -710,7 +745,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         } else {
             s = s.copy(nodeEdit = null)
         }
-        if (tool == Tool.Pen || tool == Tool.Pencil) s = s.copy(selection = emptySet())
+        if (tool == Tool.Pen || tool == Tool.Pencil) s = s.copy(selection = emptySet(), layerSelection = emptySet())
         state = s
     }
 
@@ -731,10 +766,17 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             }
             return
         }
-        if (state.selection.isEmpty()) return
+        if (state.selection.isEmpty() && state.layerSelection.isEmpty()) return
         onDragCancel()
-        val doc = state.selection.fold(present) { d, id -> d.removeNode(id) }
-        commit(doc) { it.copy(selection = emptySet(), nodeEdit = null) }
+        var doc = state.selection.fold(present) { d, id -> d.removeNode(id) }
+        // Bütün olarak seçilmiş katmanlar da silinir (son katman kalır).
+        for (id in state.layerSelection) doc = doc.removeLayer(id)
+        commit(doc) {
+            it.copy(
+                selection = emptySet(), layerSelection = emptySet(), nodeEdit = null,
+                activeLayerId = if (doc.findLayer(it.activeLayerId) != null) it.activeLayerId else doc.layers.last().id,
+            )
+        }
     }
 
     fun selectAll() {
@@ -988,12 +1030,14 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     /** Seçilen nesnenin stilini araç çubuğuna yansıtır; gradyanlar göstergede ilk renkleriyle görünür. */
     private fun EditorState.withSelection(ids: Set<String>): EditorState {
         val doc = history.present
-        val node = ids.singleOrNull()?.let { doc.findNode(it) } ?: return copy(selection = ids, nodeEdit = nodeEdit?.takeIf { it.nodeId in ids })
+        val node = ids.singleOrNull()?.let { doc.findNode(it) }
+            ?: return copy(selection = ids, layerSelection = emptySet(), nodeEdit = nodeEdit?.takeIf { it.nodeId in ids })
         val sample = node.styleSample()
         val f = sample?.first
         val st = sample?.second
         return copy(
             selection = ids,
+            layerSelection = emptySet(),
             nodeEdit = nodeEdit?.takeIf { it.nodeId in ids },
             fill = if (sample == null) fill else (f as? Paint.Solid)?.color ?: if (f == null) null else fill,
             stroke = if (sample == null) stroke else (st?.paint as? Paint.Solid)?.color ?: if (st == null) null else stroke,
@@ -1033,6 +1077,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         commit(doc) { s ->
             s.copy(
                 selection = s.selection.filterTo(HashSet()) { doc.findNode(it) != null },
+                layerSelection = s.layerSelection - id,
                 nodeEdit = null,
                 activeLayerId = if (s.activeLayerId == id) doc.layers.last().id else s.activeLayerId,
             )
@@ -1139,6 +1184,146 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         }
         val layer = present.layers.firstOrNull { l -> path.clear(); search(l.children) } ?: return
         state = state.copy(layersOpen = true, expanded = state.expanded + layer.id + path, revealTick = state.revealTick + 1)
+    }
+
+    // ---- Katman panelinde çoklu seçim ----------------------------------------
+
+    fun toggleMultiSelect() {
+        state = if (state.multiSelect) state.copy(multiSelect = false, layerSelection = emptySet()) else state.copy(multiSelect = true)
+    }
+
+    /** Çoklu seçim kipinde nesne satırına dokunuldu: nesne seçime eklenir ya da seçimden çıkar. */
+    fun toggleNodeSelected(id: String) {
+        present.findNode(id) ?: return
+        if (state.pen != null) finishPen()
+        val layers = state.layerSelection
+        val ids = if (id in state.selection) state.selection - id else state.selection + id
+        // Bütün olarak seçili bir katmanın nesnesi çıkarıldıysa katman artık "bütün" seçili değildir.
+        val owner = if (id in state.selection) present.layerOf(id)?.id else null
+        state = state.withSelection(ids).copy(
+            layerSelection = if (owner != null) layers - owner else layers,
+            nodeEdit = null,
+            tool = Tool.Select,
+        )
+    }
+
+    /** Çoklu seçim kipinde katman satırına dokunuldu: katman, içindeki her şeyle birlikte seçilir ya da bırakılır. */
+    fun toggleLayerSelected(layerId: String) {
+        val layer = present.findLayer(layerId) ?: return
+        if (state.pen != null) finishPen()
+        val kids = layer.children.map { it.id }.toSet()
+        val layers = state.layerSelection
+        state = if (layerId in layers) {
+            state.withSelection(state.selection - kids).copy(layerSelection = layers - layerId, nodeEdit = null)
+        } else {
+            // Kilitli ya da gizli katmanın nesneleri tuvalde seçilmez; katman yine de kopyalanabilir.
+            val add = if (layer.visible && !layer.locked) layer.children.filter { it.visible && !it.locked }.map { it.id } else emptyList()
+            state.withSelection(state.selection + add).copy(layerSelection = layers + layerId, nodeEdit = null, tool = Tool.Select)
+        }
+    }
+
+    // ---- Pano: kopyala, kes, yapıştır (belgeler arasında da) -------------------
+
+    private var clipboard: Clip? = null
+    private var clipSource: String? = null
+    private var pasteCount = 0
+
+    /** Panoda yapıştırılabilecek bir şey var mı. */
+    var canPaste by mutableStateOf(false)
+        private set
+
+    /** Seçili nesneleri (ve bütün olarak seçili katmanları) panoya alır. */
+    fun copySelection(): Boolean {
+        if (state.pen != null) finishPen()
+        val clip = present.clip(state.selection, state.layerSelection)
+        if (clip.isEmpty) {
+            state = state.copy(message = tr("Kopyalamak için önce bir nesne seçin"))
+            return false
+        }
+        clipboard = clip
+        clipSource = state.session.id
+        pasteCount = 0
+        canPaste = true
+        state = state.copy(
+            message = if (clip.layers.isEmpty()) tr("%s nesne kopyalandı", clip.count) else tr("%s katman kopyalandı", clip.layers.size),
+        )
+        return true
+    }
+
+    fun cutSelection() {
+        if (!copySelection()) return
+        // Kesilen içerik aynı yere geri yapıştırılabilsin.
+        clipSource = null
+        deleteSelection()
+    }
+
+    /**
+     * Panodakileri etkin belgeye ekler. Aynı belgede kopyanın üstüne binmesin diye biraz kaydırılır; başka belgede
+     * aynı konumda durur, o konum ekranda görünmüyorsa görünen alanın ortasına gelir.
+     */
+    fun paste() {
+        val clip = clipboard ?: run {
+            state = state.copy(message = tr("Pano boş"))
+            return
+        }
+        if (state.pen != null) finishPen()
+        onDragCancel()
+        val target = if (clip.nodes.isEmpty()) present.findLayer(state.activeLayerId) ?: present.layers.last() else drawingLayer() ?: run {
+            state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
+            return
+        }
+        var offset = Vec2.Zero
+        val box = clip.bounds()
+        if (clipSource == state.session.id) {
+            pasteCount++
+            val step = 24.0 / viewport.scale * pasteCount
+            offset = Vec2(step, step)
+        } else if (box != null && canvasSize.width > 0 && canvasSize.height > 0) {
+            val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(canvasSize.width, canvasSize.height)))
+            if (!visible.intersects(box)) offset = visible.center - box.center
+        }
+        val pasted = present.paste(clip, target.id, offset)
+        commit(pasted.document) {
+            it.copy(tool = Tool.Select, nodeEdit = null, activeLayerId = pasted.layerIds.lastOrNull() ?: target.id, expanded = it.expanded + pasted.layerIds)
+                .withSelection(selectable(pasted))
+                .copy(message = tr("Yapıştırıldı"))
+        }
+        present.boundsOf(state.selection)?.let(::bringIntoView)
+    }
+
+    /** Eklenen nesnelerden tuvalde seçilebilenler (kilitli ya da gizli katmandakiler dışında). */
+    private fun selectable(pasted: Pasted): Set<String> {
+        val added = pasted.nodeIds.toHashSet()
+        val out = HashSet<String>()
+        for (l in pasted.document.layers) {
+            if (!l.visible || l.locked) continue
+            for (n in l.children) if (n.id in added && n.visible && !n.locked) out += n.id
+        }
+        return out
+    }
+
+    /** "Dışarıdan ekle": seçilen .ai, .pdf ya da .svg dosyasının katmanlarını açık belgeye ekler. */
+    fun importInto(uri: String) {
+        if (state.pen != null) finishPen()
+        val tab = state.session.id
+        background(tr("Ekleniyor…")) {
+            val opened = io.open(uri)
+            withContext(Dispatchers.Main) {
+                if (state.session.id != tab) return@withContext
+                val pasted = present.merged(opened.result.document)
+                if (pasted.layerIds.isEmpty()) {
+                    state = state.copy(message = tr("Dosyada eklenecek nesne yok"))
+                    return@withContext
+                }
+                commit(pasted.document) {
+                    it.copy(
+                        tool = Tool.Select, nodeEdit = null, activeLayerId = pasted.layerIds.last(), layersOpen = true,
+                        warnings = opened.result.warnings,
+                    ).withSelection(selectable(pasted)).copy(message = tr("%s katman eklendi", pasted.layerIds.size))
+                }
+                present.boundsOf(state.selection)?.let(::bringIntoView)
+            }
+        }
     }
 
     // ---- Metin ------------------------------------------------------------
@@ -1252,13 +1437,119 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     }
 
     /** Belgeyi ekrana yükler. [stored] doluysa belge depodan geldi demektir ve yeniden yazılması gerekmez. */
-    private fun load(doc: Document, warnings: List<String>, session: DocSession, stored: Boolean) {
-        drag = null
-        state = freshState(doc, session).copy(warnings = warnings)
-        storedDoc = if (stored) doc else null
+    /**
+     * Belgeyi ekrana yükler. [stored] doluysa belge depodan geldi demektir ve yeniden yazılması gerekmez.
+     * [newTab] doğruysa açık belge kapanmaz, arka sekmede kalır; hiç dokunulmamış boş belgenin yerine ise doğrudan geçilir.
+     */
+    private fun load(doc: Document, warnings: List<String>, session: DocSession, stored: Boolean, newTab: Boolean = true) {
+        leaveDocument()
+        val old = state
+        val replace = !newTab || !worthStoring(old)
+        if (!replace) {
+            parked[old.session.id] = park(old)
+            persistLater(old)
+        }
+        state = freshState(doc, session).copy(
+            warnings = warnings, layersOpen = old.layersOpen, snapping = old.snapping, multiSelect = old.multiSelect,
+            busy = old.busy, crashReport = old.crashReport,
+        )
+        tabOrder = if (replace) tabOrder.map { if (it == old.session.id) session.id else it } else tabOrder + session.id
+        if (stored) storedDocs[session.id] = doc
+        // Çok sekme belleği doldurmasın: en eski arka sekme kapanır (belge "Belgelerim"de durur).
+        while (tabOrder.size > MAX_TABS) {
+            val oldest = tabOrder.first { it != session.id }
+            parked.remove(oldest)
+            tabOrder = tabOrder - oldest
+        }
         fitPending = true
         if (canvasSize.width > 0) { fitPending = false; fitToScreen() }
         if (!stored) scheduleAutosave()
+    }
+
+    /** Belge değişmeden önce yarım kalan işleri toparlar (kalemle çizilen yol biter, açık pencereler kapanır). */
+    private fun leaveDocument() {
+        if (state.pen != null) finishPen()
+        onDragCancel()
+        drag = null
+        if (state.trace != null) cancelTrace()
+        if (state.textPrompt != null) state = state.copy(textPrompt = null)
+    }
+
+    private fun park(s: EditorState) = Parked(
+        s.copy(preview = null, marquee = null, guides = null, busy = null, message = null, textPrompt = null, trace = null, gallery = null, crashReport = null, pen = null),
+        viewport, fitted || fitPending,
+    )
+
+    /** Arka sekmedeki belgeyi öne getirir; önceki belgenin araç ve panel ayarları korunur. */
+    private fun show(target: Parked, from: EditorState) {
+        state = target.state.copy(
+            layersOpen = from.layersOpen, snapping = from.snapping, multiSelect = from.multiSelect, busy = from.busy,
+            crashReport = from.crashReport, layerSelection = if (from.multiSelect) target.state.layerSelection else emptySet(),
+        )
+        viewport = target.viewport
+        fitted = target.fitted
+        // Sekme beklerken ekran boyutu değişmiş olabilir.
+        if (fitted) {
+            fitPending = true
+            if (canvasSize.width > 0) { fitPending = false; fitToScreen() }
+        }
+        val id = state.session.id
+        backgroundScope.launch { try { if (io.store.exists(id)) io.store.setCurrent(id) } catch (e: Throwable) { } }
+    }
+
+    fun switchTab(id: String) {
+        if (id == state.session.id) return
+        val target = parked[id] ?: return
+        leaveDocument()
+        val old = state
+        parked.remove(id)
+        parked[old.session.id] = park(old)
+        show(target, old)
+        persistLater(old)
+    }
+
+    /** Sekmeyi kapatır. Belge silinmez: son hali "Belgelerim"de durur. */
+    fun closeTab(id: String) {
+        if (id == state.session.id) leaveDocument()
+        val closing = stateOf(id) ?: return
+        val kept = worthStoring(closing)
+        persistLater(closing)
+        dropTab(id)
+        if (kept) state = state.copy(message = tr("Sekme kapatıldı; belge \"Belgelerim\"de duruyor"))
+    }
+
+    /** Sekmeyi kaydetmeden listeden çıkarır. Son sekmeyse yerine boş bir belge açılır. */
+    private fun dropTab(id: String) {
+        if (id != state.session.id) {
+            if (parked.remove(id) != null) tabOrder = tabOrder - id
+            return
+        }
+        autosaveJob?.cancel()
+        val i = tabOrder.indexOf(id)
+        val next = tabOrder.getOrNull(i + 1) ?: tabOrder.getOrNull(i - 1)
+        val target = next?.let { parked.remove(it) }
+        val old = state
+        if (target == null) {
+            state = freshState(Document.blank(name = tr("Adsız")), DocSession(io.store.newId())).copy(
+                layersOpen = old.layersOpen, snapping = old.snapping, busy = old.busy, crashReport = old.crashReport, gallery = old.gallery,
+            )
+            tabOrder = listOf(state.session.id)
+            fitPending = true
+            if (canvasSize.width > 0) { fitPending = false; fitToScreen() }
+        } else {
+            show(target, old)
+            state = state.copy(gallery = old.gallery)
+            tabOrder = tabOrder - id
+        }
+    }
+
+    /** Kimliği verilen açık belgenin (etkin ya da arka sekmedeki) durumu. */
+    private fun stateOf(id: String): EditorState? = if (state.session.id == id) state else parked[id]?.state
+
+    /** Arka planda biten bir iş, başladığı sekmenin durumunu günceller (kullanıcı bu arada sekme değiştirmiş olabilir). */
+    private fun editTab(id: String, f: (EditorState) -> EditorState) {
+        if (state.session.id == id) state = f(state)
+        else parked[id]?.let { parked[id] = Parked(f(it.state), it.viewport, it.fitted) }
     }
 
     fun newDocument(width: Double, height: Double) {
@@ -1271,8 +1562,13 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         }
     }
 
+    /** Dosyayı yeni sekmede açar; açık belge kapanmaz. Dosya zaten açıksa o sekmeye geçilir. */
     fun open(uri: String) {
         if (state.pen != null) finishPen()
+        tabOrder.firstOrNull { stateOf(it)?.session?.linkUri == uri }?.let { open ->
+            switchTab(open)
+            return
+        }
         background(tr("Açılıyor…")) {
             val opened = io.open(uri)
             io.persistAccess(uri)
@@ -1317,6 +1613,11 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             hideGallery()
             return
         }
+        if (id in parked) {
+            hideGallery()
+            switchTab(id)
+            return
+        }
         background(tr("Açılıyor…")) {
             persistNow()
             val meta = io.store.read(id) ?: throw java.io.IOException(tr("Belge bulunamadı"))
@@ -1329,14 +1630,14 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     }
 
     fun deleteStored(id: String) = background(tr("Siliniyor…")) {
-        val wasCurrent = id == state.session.id
-        if (wasCurrent) autosaveJob?.cancel()
-        io.store.delete(id)
-        val list = io.store.list()
-        withContext(Dispatchers.Main) {
-            if (wasCurrent) load(Document.blank(), emptyList(), DocSession(io.store.newId()), stored = false)
-            state = state.copy(gallery = list)
+        // Belge bir sekmede açıksa önce sekmesi kapanır (yeniden kaydedilmesin).
+        withContext(Dispatchers.Main) { dropTab(id) }
+        synchronized(saveLock) {
+            storedDocs.remove(id)
+            io.store.delete(id)
         }
+        val list = io.store.list()
+        withContext(Dispatchers.Main) { state = state.copy(gallery = list) }
     }
 
     // ---- Kaydetme -----------------------------------------------------------
@@ -1347,6 +1648,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         val format = state.session.linkFormat ?: ExportFormat.Ai
         if (state.pen != null) finishPen()
         val doc = present
+        val tab = state.session.id
         background(tr("Kaydediliyor…")) {
             try {
                 io.export(doc, link, format)
@@ -1354,9 +1656,10 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
                 throw java.io.IOException(tr("%s. \"Farklı kaydet\" ile yeni bir dosyaya kaydedin.", e.message))
             }
             withContext(Dispatchers.Main) {
-                state = state.copy(session = state.session.copy(unsaved = present !== doc), message = tr("Kaydedildi"))
+                editTab(tab) { it.copy(session = it.session.copy(unsaved = it.history.present !== doc)) }
+                state = state.copy(message = tr("Kaydedildi"))
             }
-            persistMeta()
+            persistMeta(tab)
         }
     }
 
@@ -1364,17 +1667,18 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     fun saveAs(uri: String) {
         if (state.pen != null) finishPen()
         val doc = present
+        val tab = state.session.id
         background(tr("Kaydediliyor…")) {
             io.export(doc, uri, ExportFormat.Ai)
             io.persistAccess(uri)
             withContext(Dispatchers.Main) {
-                state = state.copy(
-                    session = state.session.copy(linkUri = uri, linkFormat = ExportFormat.Ai, linkWritable = true, unsaved = present !== doc),
-                    message = tr("Kaydedildi"),
-                )
+                editTab(tab) {
+                    it.copy(session = it.session.copy(linkUri = uri, linkFormat = ExportFormat.Ai, linkWritable = true, unsaved = it.history.present !== doc))
+                }
+                state = state.copy(message = tr("Kaydedildi"))
             }
-            persistNow()
-            persistMeta()
+            stateOf(tab)?.let(::persistState)
+            persistMeta(tab)
         }
     }
 
@@ -1555,8 +1859,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     // ---- Otomatik kayıt -----------------------------------------------------
 
     /** Depoya en son yazılan belge; aynı nesneyse yeniden yazmaya gerek yoktur. */
-    @Volatile
-    private var storedDoc: Document? = null
+    private val storedDocs = java.util.concurrent.ConcurrentHashMap<String, Document>()
     private val saveLock = Any()
 
     private fun metaOf(session: DocSession, doc: Document) = StoredDocument(
@@ -1573,18 +1876,30 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     private fun persistNow() {
         autosaveJob?.cancel()
         val s = state
+        if (persistState(s)) io.store.setCurrent(s.session.id)
+    }
+
+    /** Verilen belge durumunu (etkin ya da arka sekmedeki) depoya yazar. @return yazıldıysa `true`. */
+    private fun persistState(s: EditorState): Boolean {
         val doc = s.history.present
-        if (doc === storedDoc || !worthStoring(s)) return
+        if (doc === storedDocs[s.session.id] || !worthStoring(s)) return false
         synchronized(saveLock) {
             io.saveToStore(metaOf(s.session, doc), doc)
-            io.store.setCurrent(s.session.id)
-            storedDoc = doc
+            storedDocs[s.session.id] = doc
+        }
+        return true
+    }
+
+    /** Arka sekmeye giden ya da kapanan belgeyi ekranı bekletmeden depoya yazar. */
+    private fun persistLater(s: EditorState) {
+        backgroundScope.launch {
+            try { persistState(s) } catch (e: Throwable) { }
         }
     }
 
-    private fun persistMeta() {
-        val s = state
-        if (io.store.exists(s.session.id)) io.store.writeMeta(metaOf(s.session, s.history.present))
+    private fun persistMeta(id: String) {
+        val s = stateOf(id) ?: return
+        if (io.store.exists(id)) io.store.writeMeta(metaOf(s.session, s.history.present))
     }
 
     private fun scheduleAutosave() {
@@ -1619,7 +1934,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             val doc = restored.document
             if (!untouched) return@launch
             if (meta != null && doc != null) {
-                load(doc, emptyList(), DocSession(meta.id, meta.linkUri, meta.linkFormat, meta.linkWritable, meta.unsaved), stored = true)
+                load(doc, emptyList(), DocSession(meta.id, meta.linkUri, meta.linkFormat, meta.linkWritable, meta.unsaved), stored = true, newTab = false)
             } else if (!restored.others.isNullOrEmpty()) {
                 // Son belge açılamadı ama başkaları var: galeriyi göster.
                 state = state.copy(gallery = restored.others)
@@ -1629,15 +1944,23 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
 
     /** Uygulama arka plana giderken bekleyen otomatik kaydı hemen yaz (ekran kapanınca iptal olmayan kapsamda). */
     fun flushAutosave() {
+        val others = parked.values.map { it.state }
         backgroundScope.launch {
             try { persistNow() } catch (e: Throwable) { }
+            for (s in others) try { persistState(s) } catch (e: Throwable) { }
         }
     }
 
     /** Pencere kapanırken: bekleyen otomatik kaydı bitene kadar bekler (masaüstü). */
     fun flushAutosaveNow() {
         try { persistNow() } catch (e: Throwable) { }
+        for (p in parked.values.toList()) try { persistState(p.state) } catch (e: Throwable) { }
     }
 
     private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+
+    companion object {
+        /** Aynı anda açık tutulan en çok belge sayısı. */
+        const val MAX_TABS = 8
+    }
 }

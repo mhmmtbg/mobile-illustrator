@@ -63,6 +63,19 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.mhmmtbg.mobileillustrator.editor.TextPrompt
+import io.github.mhmmtbg.mobileillustrator.editor.BundledFonts
+import io.github.mhmmtbg.mobileillustrator.model.Document
+import io.github.mhmmtbg.mobileillustrator.model.Layer
+import io.github.mhmmtbg.mobileillustrator.model.Paint
+import io.github.mhmmtbg.mobileillustrator.model.TextNode
+import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.semantics.selected
 import io.github.mhmmtbg.mobileillustrator.model.Ink
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 
@@ -131,6 +144,88 @@ fun NewDocumentDialog(onDismiss: () -> Unit, onCreate: (Double, Double) -> Unit)
     )
 }
 
+/**
+ * Seçilebilecek fontlar (görünen ad, metin düğümüne yazılacak aile adı): önce cihazın genel aileleri, sonra kullanıcının
+ * yüklediği ve uygulamayla gelen fontlar, en sonda bilgisayarda yüklü diğer fontlar. Belgedeki font bu cihazda yoksa
+ * o da listede görünür (seçim kaybolmasın).
+ */
+private fun fontChoices(systemFonts: List<Pair<String, String>>, loaded: List<String>, family: String): List<Pair<String, String>> {
+    val generic = systemFonts.filter { it.first != it.second }
+    val installed = systemFonts.filter { it.first == it.second }
+    val own = (loaded + BundledFonts.names).distinct().sortedBy { it.lowercase() }.map { it to DocumentRenderer.CUSTOM_FONT_PREFIX + it }
+    val known = generic + own + installed
+    val missing = if (known.none { it.second == family }) {
+        listOf(tr("%s (yüklü değil)", family.removePrefix(DocumentRenderer.CUSTOM_FONT_PREFIX)) to family)
+    } else {
+        emptyList()
+    }
+    return missing + known
+}
+
+private val SampleRenderer by lazy { DocumentRenderer() }
+
+/** Font adını o fontla yazar (tuvaldeki çizimle aynı çiziciyle; böylece görünen, metnin alacağı biçimdir). */
+@Composable
+private fun FontSample(label: String, family: String, selected: Boolean, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val px = size.height * 0.72f
+        val node = TextNode(
+            text = label, fontSize = px.toDouble(), fontFamily = family,
+            fill = Paint.Solid(if (selected) Rgba.rgb(0xFF9A3C) else Rgba.rgb(0xE6E6E8)),
+        )
+        val doc = Document(name = "", artboards = emptyList(), layers = listOf(Layer(name = "", children = listOf(node))))
+        clipRect {
+            drawIntoCanvas { canvas ->
+                canvas.save()
+                canvas.translate(0f, size.height * 0.76f)
+                try {
+                    SampleRenderer.draw(canvas.nativeCanvas, doc, artboardColor = null)
+                } catch (e: RuntimeException) {
+                    // Bozuk bir font listeyi düşürmesin; satırın altındaki düz ad yine okunur.
+                }
+                canvas.restore()
+            }
+        }
+    }
+}
+
+/** Font listesi: her font kendi biçimiyle yazılır; altında adı düz yazıyla da durur (süs fontlarında okunabilsin). */
+@Composable
+private fun FontPickerDialog(
+    choices: List<Pair<String, String>>,
+    current: String,
+    onLoadFont: () -> Unit,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = maxOf(0, choices.indexOfFirst { it.second == current } - 2))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr("Font seç")) },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), state = listState) {
+                items(choices, key = { it.second }) { (label, value) ->
+                    val selected = value == current
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) AppColors.PanelRaised else Color.Transparent)
+                            .clickable(role = Role.RadioButton) { onPick(value) }
+                            .semantics(mergeDescendants = true) { contentDescription = label; this.selected = selected }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        FontSample(label, value, selected, Modifier.fillMaxWidth().height(30.dp))
+                        Text(label, color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onLoadFont) { Text(tr("Font yükle (.ttf, .otf)…")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
+    )
+}
+
 @Composable
 fun TextDialog(
     prompt: TextPrompt,
@@ -151,6 +246,15 @@ fun TextDialog(
     val sizeValue = size.replace(',', '.').toDoubleOrNull()
     val leadingValue = leading.replace(',', '.').toDoubleOrNull()
     val keys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+    var fontMenu by remember { mutableStateOf(false) }
+    if (fontMenu) {
+        FontPickerDialog(
+            fontChoices(systemFonts, fonts, family), family,
+            onLoadFont = { fontMenu = false; onLoadFont() },
+            onDismiss = { fontMenu = false },
+            onPick = { fontMenu = false; family = it },
+        )
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (prompt.nodeId == null) tr("Metin ekle") else tr("Metni düzenle")) },
@@ -158,42 +262,23 @@ fun TextDialog(
             // Yükseklik sınırlı: klavye açıkken Tamam/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
             Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(tr("Metin")) }, minLines = 2, maxLines = 6)
-                // Font: metnin hemen altında, açılır listeden seçilir (cihazın fontları, yüklenenler ve "Font yükle").
-                val custom = fonts.map { it to "font:$it" }
-                // Belgedeki font bu cihazda yoksa da listede görünür (seçim kaybolmasın).
-                val known = systemFonts + custom
-                val missing = if (known.none { it.second == family }) listOf(tr("%s (yüklü değil)", family.removePrefix("font:")) to family) else emptyList()
-                val all = known + missing
-                var fontMenu by remember { mutableStateOf(false) }
-                Box {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(AppColors.PanelRaised)
-                            .clickable(role = Role.DropdownList) { fontMenu = true }
-                            .semantics { contentDescription = tr("Font seç") }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(tr("Font"), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelLarge)
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            all.firstOrNull { it.second == family }?.first ?: family,
-                            Modifier.weight(1f), color = AppColors.OnPanel, style = MaterialTheme.typography.labelLarge, maxLines = 1,
-                        )
-                        Text("▾", color = AppColors.OnPanelMuted)
-                    }
-                    DropdownMenu(expanded = fontMenu, onDismissRequest = { fontMenu = false }, modifier = Modifier.heightIn(max = 320.dp)) {
-                        for ((label, value) in all) {
-                            DropdownMenuItem(
-                                text = { Text(label, color = if (value == family) AppColors.Accent else Color.Unspecified) },
-                                onClick = { fontMenu = false; family = value },
-                            )
-                        }
-                        HorizontalDivider()
-                        DropdownMenuItem(text = { Text(tr("Font yükle (.ttf, .otf)…")) }, onClick = { fontMenu = false; onLoadFont() })
-                    }
+                // Font: metnin hemen altında; dokununca her adın kendi fontuyla yazıldığı liste açılır.
+                val all = fontChoices(systemFonts, fonts, family)
+                val current = all.firstOrNull { it.second == family }?.first ?: family
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppColors.PanelRaised)
+                        .clickable(role = Role.DropdownList) { fontMenu = true }
+                        .semantics { contentDescription = tr("Font seç") }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(tr("Font"), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.width(10.dp))
+                    FontSample(current, family, selected = false, Modifier.weight(1f).height(26.dp))
+                    Text("▾", color = AppColors.OnPanelMuted)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Boyut")) }, keyboardOptions = keys)

@@ -86,6 +86,27 @@ class RoundTripTest {
         near(1.0, (st.paint as Paint.Solid).color.a)
     }
 
+    /** Başka programların PDF'lerindeki "Locked" listesi düzenleme kilidi değildir; öyle sayılırsa hiçbir şey seçilemez. */
+    @Test
+    fun lockListOfForeignFilesIsNotAnEditLock() {
+        val r = PathNode(subpaths = listOf(Shapes.rect(Rect(0.0, 0.0, 10.0, 10.0))), fill = solid(0xFF0000))
+        val doc = Document(
+            name = "yabancı",
+            artboards = listOf(Artboard(bounds = Rect(0.0, 0.0, 100.0, 100.0))),
+            layers = listOf(Layer(name = "01 Zemin", children = listOf(r), locked = true), Layer(name = "02 Desen", children = listOf(r.copy(id = "b")), locked = true)),
+        )
+        val bytes = AiExporter.export(doc)
+        val text = String(bytes, Charsets.ISO_8859_1)
+        val own = "(" + AiExporter.PRODUCER + ")"
+        assertTrue(own in text)
+        val foreign = text.replace(own, "(Another PDF Writer)").toByteArray(Charsets.ISO_8859_1)
+        assertEquals(bytes.size, foreign.size)
+        assertEquals(listOf(true, true), AiImporter.import(bytes, "a").document.layers.map { it.locked })
+        val back = AiImporter.import(foreign, "a")
+        assertEquals(listOf(false, false), back.document.layers.map { it.locked })
+        assertEquals(listOf("01 Zemin", "02 Desen"), back.document.layers.map { it.name })
+    }
+
     @Test
     fun layersKeepOrderVisibilityLockAndOpacity() {
         val r = PathNode(subpaths = listOf(Shapes.rect(Rect(0.0, 0.0, 10.0, 10.0))), fill = solid(0xFF0000))
