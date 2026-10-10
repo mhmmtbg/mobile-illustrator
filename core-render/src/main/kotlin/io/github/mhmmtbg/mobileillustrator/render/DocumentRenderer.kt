@@ -252,7 +252,39 @@ class DocumentRenderer {
         return bmp
     }
 
+    /** Eğilmiş metnin yolu; metnin biçimini belirleyen özellikler değişmedikçe yeniden kurulmaz. */
+    private class WarpedText(val node: TextNode, val path: AndroidPath)
+
+    private val warpCache = HashMap<String, WarpedText>()
+
+    private fun warpedPath(node: TextNode): AndroidPath {
+        val cached = warpCache[node.id]
+        if (cached != null) {
+            val o = cached.node
+            if (o === node || (o.text == node.text && o.warp == node.warp && o.fontSize == node.fontSize && o.fontFamily == node.fontFamily &&
+                    o.bold == node.bold && o.italic == node.italic && o.align == node.align && o.lineHeight == node.lineHeight &&
+                    o.measuredWidth == node.measuredWidth && o.outline === node.outline)
+            ) {
+                return cached.path
+            }
+        }
+        if (warpCache.size > 2000) warpCache.clear()
+        val path = AndroidPath()
+        fillPath(path, TextOutliner.outline(node), FillRule.NonZero)
+        warpCache[node.id] = WarpedText(node, path)
+        return path
+    }
+
     private fun drawText(canvas: Canvas, node: TextNode) {
+        if (node.warp != null) {
+            // Eğilmiş metin: harf biçimleri bükülür ve yol olarak çizilir.
+            val path = warpedPath(node)
+            node.fill?.let { applyPaint(fillPaint, it, node.opacity); setBlend(fillPaint, node.blendMode); canvas.drawPath(path, fillPaint) }
+            node.stroke?.takeIf { it.width > 0.0 }?.let {
+                applyStroke(strokePaint, it, node.opacity); setBlend(strokePaint, node.blendMode); canvas.drawPath(path, strokePaint)
+            }
+            return
+        }
         node.outline?.let { shapes ->
             // Dosyadaki fontun harf biçimleri: yol olarak çizilir.
             val cached = pathCache[node.id]
@@ -376,6 +408,23 @@ class DocumentRenderer {
     companion object {
         const val CUSTOM_FONT_PREFIX = "font:"
 
+        /** Android'in her sürümünde bulunan font aileleri (görünen ad -> aile adı). */
+        val SYSTEM_FONTS: List<Pair<String, String>> = listOf(
+            "Sans" to "sans-serif",
+            "Sans Light" to "sans-serif-light",
+            "Sans Thin" to "sans-serif-thin",
+            "Sans Medium" to "sans-serif-medium",
+            "Sans Black" to "sans-serif-black",
+            "Sans Condensed" to "sans-serif-condensed",
+            "Small Caps" to "sans-serif-smallcaps",
+            "Serif" to "serif",
+            "Mono" to "monospace",
+            "Serif Mono" to "serif-monospace",
+            "Casual" to "casual",
+            "Cursive" to "cursive",
+        )
+        private val SYSTEM_FAMILIES = SYSTEM_FONTS.map { it.second }.toSet()
+
         /** Yüklenen fontları adından bulur; uygulama açılışında ayarlanır. Font cihazda yoksa `null` döner. */
         @Volatile
         var customFonts: ((String) -> Typeface?)? = null
@@ -417,17 +466,19 @@ class DocumentRenderer {
                     return if (style == 0) tf else Typeface.create(tf, style)
                 }
             }
-            val family = node.fontFamily.lowercase()
-            val base = when {
-                family.contains("mono") || family.contains("courier") -> Typeface.MONOSPACE
-                family.contains("serif") && !family.contains("sans") -> Typeface.SERIF
-                else -> Typeface.SANS_SERIF
-            }
             val style = when {
                 node.bold && node.italic -> Typeface.BOLD_ITALIC
                 node.bold -> Typeface.BOLD
                 node.italic -> Typeface.ITALIC
                 else -> Typeface.NORMAL
+            }
+            // Android'in kendi font aileleri adlarıyla seçilir.
+            if (node.fontFamily in SYSTEM_FAMILIES) return Typeface.create(node.fontFamily, style)
+            val family = node.fontFamily.lowercase()
+            val base = when {
+                family.contains("mono") || family.contains("courier") -> Typeface.MONOSPACE
+                family.contains("serif") && !family.contains("sans") -> Typeface.SERIF
+                else -> Typeface.SANS_SERIF
             }
             return Typeface.create(base, style)
         }

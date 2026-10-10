@@ -321,6 +321,17 @@ object L10n {
         "Köşe yuvarlama" to "Corner rounding",
         "Zemin rengini izleme" to "Leave out the background colour",
         "Özgün görsel silinmez, gizlenir; katman panelinden yeniden gösterebilirsin." to "The original image is hidden, not deleted; you can show it again from the layers panel.",
+        "Font seç" to "Choose font",
+        "Font" to "Font",
+        "Eğ" to "Warp",
+        "Eğim" to "Bend",
+        "Yay" to "Arc",
+        "Kemer" to "Arch",
+        "Dalga" to "Wave",
+        "Şişkin" to "Bulge",
+        "Yükselen" to "Rise",
+        "Katmandaki nesneleri seç" to "Select objects in layer",
+        "Eğme yok" to "No warp",
     )
 }
 

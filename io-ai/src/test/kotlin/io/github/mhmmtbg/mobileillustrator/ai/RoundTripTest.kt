@@ -482,4 +482,27 @@ trailer << /Root 1 0 R >>
         assertTrue(abs(para.fontSize - 12.0) < 1e-6)
         assertEquals("Ayri", (kids[1] as TextNode).text)
     }
+
+    @Test
+    fun warpedTextKeepsItsWarpAndIsWrittenAsBentShapes() {
+        val warp = io.github.mhmmtbg.mobileillustrator.model.TextWarp(io.github.mhmmtbg.mobileillustrator.model.WarpStyle.Arc, 0.4)
+        val text = io.github.mhmmtbg.mobileillustrator.model.TextNode(text = "Yay", fontSize = 30.0, warp = warp, transform = Matrix.translate(50.0, 80.0))
+        val doc = Document.blank(200.0, 200.0).let { d -> d.copy(layers = listOf(d.layers[0].copy(children = listOf(text)))) }
+        // Dışa aktarıcıya harf biçimlerini platform verir; burada basit bir dikdörtgen "harf" yeterli.
+        var asked: io.github.mhmmtbg.mobileillustrator.model.TextNode? = null
+        val options = AiExporter.Options(outlineText = { node ->
+            asked = node
+            val flat = listOf(Shapes.rect(Rect(0.0, -30.0, 60.0, 0.0)))
+            node.warp?.apply(flat) ?: flat
+        })
+        val bytes = AiExporter.export(doc, options)
+        assertEquals(warp, asked?.warp, "eğilmiş metin her zaman biçim olarak yazılır")
+        val back = AiImporter.import(bytes, "x").document.layers[0].children.single() as io.github.mhmmtbg.mobileillustrator.model.TextNode
+        assertEquals("Yay", back.text)
+        assertEquals(warp.style, back.warp?.style)
+        assertEquals(warp.bend, back.warp!!.bend, 1e-6)
+        // Dosyadaki bükülmüş biçimler metnin "özgün harf biçimi" sayılmaz; yoksa açılışta ikinci kez bükülürdü.
+        assertEquals(null, back.outline)
+        assertEquals(text.transform, back.transform)
+    }
 }

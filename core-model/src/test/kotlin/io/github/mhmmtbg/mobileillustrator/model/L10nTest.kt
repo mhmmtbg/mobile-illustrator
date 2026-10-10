@@ -40,4 +40,13 @@ class L10nTest {
             assertEquals(count(key), count(L10n.translate(key)), key)
         }
     }
+
+    @Test
+    fun noKeyIsDefinedTwice() {
+        // Aynı Türkçe metin iki kez tanımlanırsa sonraki, öncekini sessizce ezer ve başka bir ekranın çevirisi bozulur.
+        val source = java.io.File("src/main/kotlin/io/github/mhmmtbg/mobileillustrator/model/L10n.kt")
+            .takeIf { it.isFile } ?: java.io.File("core-model/src/main/kotlin/io/github/mhmmtbg/mobileillustrator/model/L10n.kt")
+        val keys = Regex("""^\s*"((?:[^"\\]|\\.)*)" to """, RegexOption.MULTILINE).findAll(source.readText()).map { it.groupValues[1] }.toList()
+        assertEquals(emptyList(), keys.groupingBy { it }.eachCount().filter { it.value > 1 }.keys.toList())
+    }
 }

@@ -14,8 +14,17 @@ object TextOutliner {
         return paint
     }
 
-    /** Metnin yerel uzayında (taban çizgisi başlangıcı 0,0) dış hatları; eğriler eğri olarak kalır. */
+    /**
+     * Metnin yerel uzayında (taban çizgisi başlangıcı 0,0) görünen dış hatları: dosyadan gelen harf biçimleri
+     * varsa onlar, yoksa cihaz fontuyla çıkarılanlar; metin eğilmişse bükülmüş halleri. Eğriler eğri olarak kalır.
+     */
     fun outline(node: TextNode): List<SubPath> {
+        val base = node.outline ?: plain(node)
+        return node.warp?.apply(base) ?: base
+    }
+
+    /** Cihaz fontuyla, eğilmemiş dış hatlar. */
+    private fun plain(node: TextNode): List<SubPath> {
         val paint = paintFor(node)
         val path = AndroidPath()
         DocumentRenderer.forEachLine(node, paint) { line, x, y ->

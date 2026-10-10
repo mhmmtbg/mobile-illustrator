@@ -17,7 +17,11 @@ import io.github.mhmmtbg.mobileillustrator.model.Shapes
 import io.github.mhmmtbg.mobileillustrator.model.Paint
 import io.github.mhmmtbg.mobileillustrator.model.Rect
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
+import io.github.mhmmtbg.mobileillustrator.model.TextWarp
+import io.github.mhmmtbg.mobileillustrator.model.WarpStyle
+import io.github.mhmmtbg.mobileillustrator.model.SubPath
 import io.github.mhmmtbg.mobileillustrator.render.BooleanOp
+import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 import io.github.mhmmtbg.mobileillustrator.render.PathBoolean
 import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
 import io.github.mhmmtbg.mobileillustrator.ai.AiImporter
@@ -212,5 +216,54 @@ class DesktopSmokeTest {
         val undone = vm.state.document.layers.flatMap { it.children }
         assertEquals(1, undone.size)
         assertTrue(undone[0].visible)
+    }
+
+    @Test
+    fun fontsAreListedAndWarpedTextIsDrawnBent() {
+        val files = DesktopDocumentIo(newRoot())
+        val fonts = files.systemFonts()
+        assertTrue(fonts.size >= 3 && fonts.take(3).map { it.second } == listOf("sans-serif", "serif", "monospace"), "fontlar: ${fonts.take(5)}")
+
+        val flat = TextNode(text = "Merhaba", fontSize = 60.0, fill = Paint.Solid(Rgba.rgb(0)))
+        val arched = flat.copy(warp = TextWarp(WarpStyle.Arch, 1.0))
+        val straight = TextOutliner.outline(flat)
+        val bent = TextOutliner.outline(arched)
+        fun top(shapes: List<SubPath>) = shapes.minOf { sp -> sp.anchors.minOf { it.point.y } }
+        // Kemer metnin ortasını yukarı kaldırır: en üst nokta belirgin biçimde yükselir.
+        assertTrue(top(bent) < top(straight) - 40, "üst: ${top(straight)} -> ${top(bent)}")
+
+        // Çizimde de bükülmüş olmalı: düz metnin üstünde kalan boş bölgede artık mürekkep var.
+        fun inkAbove(node: TextNode): Int {
+            val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(400, 300)
+            surface.canvas.clear(0xFFFFFFFF.toInt())
+            surface.canvas.translate(40f, 220f)
+            DocumentRenderer().drawNode(surface.canvas, node)
+            val bitmap = org.jetbrains.skia.Bitmap.makeFromImage(surface.makeImageSnapshot())
+            var dark = 0
+            for (y in 60 until 150) for (x in 0 until 400) if ((bitmap.getColor(x, y) and 0xFF) < 128) dark++
+            return dark
+        }
+        assertEquals(0, inkAbove(flat))
+        assertTrue(inkAbove(arched) > 500, "bükülmüş metin yukarıda çizilmeli")
+    }
+
+    @Test
+    fun layerObjectsCanBeSelectedFromTheLayerMenu() {
+        val files = DesktopDocumentIo(newRoot())
+        lateinit var vm: EditorViewModel
+        SwingUtilities.invokeAndWait {
+            vm = EditorViewModel(files, CoroutineScope(SupervisorJob() + Dispatchers.Main))
+            vm.onCanvasSize(Size(1000f, 800f))
+            vm.openSample()
+        }
+        val deadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < deadline && (vm.state.busy != null || vm.state.document.layers.size != 3)) Thread.sleep(50)
+        SwingUtilities.invokeAndWait {
+            val layer = vm.state.document.layers.first { it.name == "License" }
+            vm.selectLayerObjects(layer.id)
+            assertEquals(layer.children.map { it.id }.toSet(), vm.state.selection)
+            assertEquals(layer.id, vm.state.activeLayerId)
+            assertEquals(Tool.Select, vm.state.tool)
+        }
     }
 }

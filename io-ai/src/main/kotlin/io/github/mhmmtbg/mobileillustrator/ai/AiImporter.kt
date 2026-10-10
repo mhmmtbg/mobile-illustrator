@@ -333,12 +333,15 @@ object AiImporter {
             var outline: List<io.github.mhmmtbg.mobileillustrator.model.SubPath>? = null
             val blend = sample?.blendMode ?: BlendMode.Normal
             val inv = t.matrix.inverse()
+            val warp = io.github.mhmmtbg.mobileillustrator.model.WarpStyle.entries.firstOrNull { it.name == t.warpStyle }
+                ?.let { io.github.mhmmtbg.mobileillustrator.model.TextWarp(it, t.warpBend.coerceIn(-1.0, 1.0)) }
             when (sample) {
                 is TextNode -> { fill = sample.fill; stroke = sample.stroke; opacity = sample.opacity }
                 is PathNode -> {
                     // Yola çevrilmiş metin: biçimler ve boyalar belge uzayındadır, metnin yerel uzayına geri taşınır.
                     opacity = sample.opacity
-                    if (inv != null) outline = sample.subpaths.map { it.transformed(inv) }
+                    // Eğilmiş metinde dosyadaki biçimler bükülmüş haldedir; harfler yeniden çıkarılıp eğme yeniden uygulanır.
+                    if (inv != null && warp == null) outline = sample.subpaths.map { it.transformed(inv) }
                     fill = if (inv != null) sample.fill?.transformedBy(inv) else sample.fill
                     stroke = sample.stroke?.let { st ->
                         val k = t.matrix.meanScale.takeIf { it > 0 } ?: 1.0
@@ -363,6 +366,7 @@ object AiImporter {
                 align = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries.firstOrNull { it.name == t.align }
                     ?: io.github.mhmmtbg.mobileillustrator.model.TextAlign.Start,
                 lineHeight = t.lineHeight,
+                warp = warp,
             )
         }
     }

@@ -39,6 +39,8 @@ import io.github.mhmmtbg.mobileillustrator.model.Shapes
 import io.github.mhmmtbg.mobileillustrator.model.Stroke
 import io.github.mhmmtbg.mobileillustrator.model.SubPath
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
+import io.github.mhmmtbg.mobileillustrator.model.TextWarp
+import io.github.mhmmtbg.mobileillustrator.model.WarpStyle
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
 import io.github.mhmmtbg.mobileillustrator.model.ZMove
 import io.github.mhmmtbg.mobileillustrator.model.addLayer
@@ -146,9 +148,14 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     var fonts by mutableStateOf<List<String>>(emptyList())
         private set
 
+    /** Cihazın hazır fontları (görünen ad, aile adı). */
+    var systemFonts by mutableStateOf(listOf("Sans" to "sans-serif", "Serif" to "serif", "Mono" to "monospace"))
+        private set
+
     init {
         scope.launch {
             fonts = withContext(Dispatchers.Default) { try { io.fonts.list() } catch (e: Throwable) { emptyList() } }
+            systemFonts = withContext(Dispatchers.Default) { try { io.systemFonts() } catch (e: Throwable) { systemFonts } }
         }
         restoreLastDocument()
         // Önceki açılış çökmeyle bittiyse kaydı göster ve dosyayı sil (bir kez gösterilir).
@@ -1098,14 +1105,19 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     /** [box] ekranda hiç görünmüyorsa görünümü (ölçeği değiştirmeden) onu ortalayacak biçimde kaydırır. */
     private fun bringIntoView(box: Rect) {
         if (canvasSize.width <= 0 || canvasSize.height <= 0) return
-        val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(canvasSize.width, canvasSize.height)))
-        if (box.intersects(visible)) return
+        // Tuvalin alt kısmını bir panel örtüyorsa görünür alan o kadar kısadır.
+        val height = (canvasSize.height - obscuredBottomPx).coerceAtLeast(canvasSize.height * 0.25f)
+        val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(canvasSize.width, height)))
+        if (visible.contains(box.center)) return
         val c = box.center
         fitted = false
         viewport = viewport.copy(
-            offset = Offset(canvasSize.width / 2 - c.x.toFloat() * viewport.scale, canvasSize.height / 2 - c.y.toFloat() * viewport.scale),
+            offset = Offset(canvasSize.width / 2 - c.x.toFloat() * viewport.scale, height / 2 - c.y.toFloat() * viewport.scale),
         )
     }
+
+    /** Tuvalin alt kenarından yukarı doğru, panellerin örttüğü yükseklik (piksel); arayüz bildirir. */
+    var obscuredBottomPx: Float = 0f
 
     /**
      * Tuvalde seçili nesneyi katman panelinde gösterir: panel açılır, nesnenin içinde bulunduğu katman ve
@@ -1141,7 +1153,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     fun outlineSelectedText() {
         val id = state.selection.singleOrNull() ?: return
         val t = present.findNode(id) as? TextNode ?: return
-        val shapes = t.outline ?: try {
+        val shapes = try {
             TextOutliner.outline(t)
         } catch (e: Throwable) {
             emptyList()
@@ -1155,6 +1167,31 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             blendMode = t.blendMode, subpaths = shapes, fill = t.fill, stroke = t.stroke,
         )
         commit(present.updateNode(id) { path }) { it.withSelection(setOf(id)) }
+    }
+
+    /**
+     * Seçili metni eğer. [style] `null` ise eğme kaldırılır. Sürgü oynarken [done] yanlıştır (yalnızca önizlenir),
+     * bırakılınca doğru verilir ve değişiklik geçmişe işlenir.
+     */
+    fun setTextWarp(style: WarpStyle?, bend: Double, done: Boolean) {
+        val id = state.selection.singleOrNull() ?: return
+        if (present.findNode(id) !is TextNode) return
+        val warp = style?.let { TextWarp(it, bend.coerceIn(-1.0, 1.0)) }
+        val doc = present.updateNode(id) { (it as? TextNode)?.copy(warp = warp) ?: it }
+        if (done) commit(doc) else state = state.copy(preview = doc.takeIf { it != present })
+    }
+
+    /** Katmandaki (görünür ve kilitsiz) tüm nesneleri seçer. */
+    fun selectLayerObjects(layerId: String) {
+        val layer = present.findLayer(layerId) ?: return
+        if (state.pen != null) finishPen()
+        if (!layer.visible || layer.locked) {
+            state = state.copy(message = tr("Etkin katman kilitli ya da gizli"))
+            return
+        }
+        val ids = layer.children.filter { it.visible && !it.locked }.map { it.id }.toSet()
+        state = state.withSelection(ids).copy(activeLayerId = layerId, nodeEdit = null, tool = Tool.Select)
+        present.boundsOf(ids)?.let(::bringIntoView)
     }
 
     fun dismissTextPrompt() {

@@ -24,12 +24,15 @@ import kotlin.math.roundToLong
 /** Belgeyi SVG 1.1 olarak yazar. Katmanlar, Illustrator ve Inkscape'in katman olarak tanıdığı üst düzey gruplardır. */
 object SvgExporter {
 
-    /** @param artboard yalnızca bu çalışma yüzeyini yaz; `null` ise hepsini kapsayan alan. */
-    fun export(document: Document, artboard: Int? = null): String {
+    /**
+     * @param artboard yalnızca bu çalışma yüzeyini yaz; `null` ise hepsini kapsayan alan.
+     * @param outlineText eğilmiş metinlerin harf biçimlerini verir (SVG metni bükülemediği için yol olarak yazılırlar).
+     */
+    fun export(document: Document, artboard: Int? = null, outlineText: ((TextNode) -> List<SubPath>?)? = null): String {
         val box = artboard?.let { document.artboards.getOrNull(it)?.bounds }
             ?: document.artboardBounds()
             ?: Rect(0.0, 0.0, 100.0, 100.0)
-        val w = Writer()
+        val w = Writer(outlineText)
         val sb = w.sb
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"")
@@ -108,7 +111,7 @@ object SvgExporter {
         return if (s.contains('.')) s.trimEnd('0').trimEnd('.').ifEmpty { "0" }.let { if (it == "-0") "0" else it } else s
     }
 
-    private class Writer {
+    private class Writer(private val outlineText: ((TextNode) -> List<SubPath>?)?) {
         val sb = StringBuilder(1 shl 16)
         private var nextId = 0
 
@@ -228,7 +231,8 @@ object SvgExporter {
         }
 
         private fun text(n: TextNode) {
-            n.outline?.let { shapes ->
+            val shown = if (n.warp != null) (try { outlineText?.invoke(n) } catch (e: RuntimeException) { null }) ?: n.outline?.let { n.warp.apply(it) } else n.outline
+            shown?.let { shapes ->
                 // Özgün fontun harf biçimleri: metin yol olarak yazılır, içerik aria-label'da kalır.
                 TAG = "<path"
                 style(n.fill, n.stroke, null)

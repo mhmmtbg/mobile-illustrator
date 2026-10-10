@@ -39,6 +39,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -129,7 +132,14 @@ fun NewDocumentDialog(onDismiss: () -> Unit, onCreate: (Double, Double) -> Unit)
 }
 
 @Composable
-fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, onDismiss: () -> Unit, onConfirm: (TextPrompt) -> Unit) {
+fun TextDialog(
+    prompt: TextPrompt,
+    systemFonts: List<Pair<String, String>>,
+    fonts: List<String>,
+    onLoadFont: () -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (TextPrompt) -> Unit,
+) {
     var text by remember { mutableStateOf(prompt.text) }
     var size by remember { mutableStateOf(prompt.fontSize.let { if (it == it.toLong().toDouble()) it.toLong().toString() else ((it * 100).toLong() / 100.0).toString() }) }
     // Font yüklenince pencere açık kalır ve yeni font seçili gelir.
@@ -146,8 +156,45 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
         title = { Text(if (prompt.nodeId == null) tr("Metin ekle") else tr("Metni düzenle")) },
         text = {
             // Yükseklik sınırlı: klavye açıkken Tamam/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
-            Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(tr("Metin")) }, minLines = 2, maxLines = 6)
+                // Font: metnin hemen altında, açılır listeden seçilir (cihazın fontları, yüklenenler ve "Font yükle").
+                val custom = fonts.map { it to "font:$it" }
+                // Belgedeki font bu cihazda yoksa da listede görünür (seçim kaybolmasın).
+                val known = systemFonts + custom
+                val missing = if (known.none { it.second == family }) listOf(tr("%s (yüklü değil)", family.removePrefix("font:")) to family) else emptyList()
+                val all = known + missing
+                var fontMenu by remember { mutableStateOf(false) }
+                Box {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AppColors.PanelRaised)
+                            .clickable(role = Role.DropdownList) { fontMenu = true }
+                            .semantics { contentDescription = tr("Font seç") }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(tr("Font"), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            all.firstOrNull { it.second == family }?.first ?: family,
+                            Modifier.weight(1f), color = AppColors.OnPanel, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                        )
+                        Text("▾", color = AppColors.OnPanelMuted)
+                    }
+                    DropdownMenu(expanded = fontMenu, onDismissRequest = { fontMenu = false }, modifier = Modifier.heightIn(max = 320.dp)) {
+                        for ((label, value) in all) {
+                            DropdownMenuItem(
+                                text = { Text(label, color = if (value == family) AppColors.Accent else Color.Unspecified) },
+                                onClick = { fontMenu = false; family = value },
+                            )
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text(tr("Font yükle (.ttf, .otf)…")) }, onClick = { fontMenu = false; onLoadFont() })
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Boyut")) }, keyboardOptions = keys)
                     OutlinedTextField(leading, { leading = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Satır aralığı")) }, keyboardOptions = keys)
@@ -164,28 +211,6 @@ fun TextDialog(prompt: TextPrompt, fonts: List<String>, onLoadFont: () -> Unit, 
                 }
                 val aligns = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries
                 ChoiceRow(tr("Hizalama"), listOf(tr("Sola") to (align == aligns[0]), tr("Ortala") to (align == aligns[1]), tr("Sağa") to (align == aligns[2]))) { align = aligns[it] }
-                Text("Font", style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val builtIn = listOf("Sans" to "sans-serif", "Serif" to "serif", "Mono" to "monospace")
-                    val custom = fonts.map { it to "font:$it" }
-                    // Belgedeki font bu cihazda yüklü değilse de listede görünür (seçim kaybolmasın).
-                    val missing = if (family.startsWith("font:") && custom.none { it.second == family }) listOf(tr("%s (yüklü değil)", family.removePrefix("font:")) to family) else emptyList()
-                    for ((label, value) in builtIn + custom + missing) {
-                        val on = family == value
-                        Text(
-                            label,
-                            Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (on) AppColors.Accent else AppColors.PanelRaised)
-                                .clickable(role = Role.RadioButton) { family = value }
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            color = if (on) Color(0xFF2B1A0E) else AppColors.OnPanel,
-                            style = MaterialTheme.typography.labelLarge,
-                            maxLines = 1,
-                        )
-                    }
-                }
-                TextButton(onClick = onLoadFont) { Text(tr("Font yükle (.ttf, .otf)…")) }
             }
         },
         confirmButton = {

@@ -511,13 +511,16 @@ object AiExporter {
             // Gerçek PDF metni yalnızca standart fontla, tek satır ve sola hizalı metinde yazılabilir; diğerlerinde
             // (çok satır, hizalama, yüklenmiş font) görünümün bozulmaması için harfler yol olarak yazılır.
             val plain = node.text.indexOf('\n') < 0 && node.align == TextAlign.Start && !node.fontFamily.startsWith("font:")
-            val encoded = if (opt.outlineAllText || shapes != null || !plain) null else encode(node.text)
+            val warp = node.warp
+            val encoded = if (opt.outlineAllText || shapes != null || !plain || warp != null) null else encode(node.text)
             // Metnin özellikleri ayrıca saklanır: bu uygulama dosyayı geri açtığında metin düzenlenebilir kalır.
             sb.append("/MI << /N ").append(textString(node.name)).append(" /T /Text /S ").append(textString(node.text))
                 .append(" /F ").append(textString(node.fontFamily)).append(" /Z ").append(n6(node.fontSize))
                 .append(" /B ").append(node.bold).append(" /I ").append(node.italic)
                 .append(" /A /").append(node.align.name).append(" /LH ").append(n6(node.lineHeight))
-                .append(" /M [").append(mat(node.transform)).append("] >> BDC\n")
+            // Eğme: biçim ve miktar saklanır; görünen içerik bükülmüş harf biçimleridir.
+            if (warp != null) sb.append(" /W /").append(warp.style.name).append(" /WB ").append(n6(warp.bend))
+            sb.append(" /M [").append(mat(node.transform)).append("] >> BDC\n")
             sb.append("q\n")
             if (!node.transform.isIdentity) sb.append(cm(node.transform)).append('\n')
             if (encoded != null) {
@@ -535,7 +538,11 @@ object AiExporter {
                 sb.append("BT /").append(font(node)).append(' ').append(n(node.fontSize)).append(" Tf ").append(mode)
                     .append(" Tr 1 0 0 -1 0 0 Tm ").append(encoded).append(" Tj ET\n")
             } else {
-                val outline = shapes ?: opt.outlineText?.invoke(node)
+                val outline = if (warp != null) {
+                    opt.outlineText?.invoke(node) ?: shapes?.let { warp.apply(it) }
+                } else {
+                    shapes ?: opt.outlineText?.invoke(node)
+                }
                 if (outline != null) paintPath(sb, outline, node.fill, node.stroke, FillRule.NonZero, node.opacity, ctm, node.blendMode)
             }
             sb.append("Q\nEMC\n")

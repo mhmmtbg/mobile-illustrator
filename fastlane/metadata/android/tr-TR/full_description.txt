@@ -19,7 +19,8 @@ RENK VE METİN
 • Düz renk, doğrusal ve dairesel gradyan, opaklık; dosyadaki karışım modları korunur
 • Kontur kalınlığı, uç ve köşe biçimleri, kesikli çizgi
 • Renk tekerleği ve renk kodu; baskı için CMYK renk seçimi; dosyadaki CMYK ve spot renkler değerleriyle korunur
-• Çok satırlı metin, hizalama, satır aralığı; kendi .ttf/.otf fontunu yükle; metni yola çevir
+• Çok satırlı metin, hizalama, satır aralığı; font seçimi ve kendi .ttf/.otf fontunu yükleme; metni yola çevir
+• Metin eğme: yay, kemer, dalga, şişkin, yükselen
 
 TABLET VE TELEFON
 • Tablette yan araç şeridi ve yana yerleşen katman paneli

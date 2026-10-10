@@ -43,6 +43,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,6 +72,7 @@ import io.github.mhmmtbg.mobileillustrator.model.ImageNode
 import io.github.mhmmtbg.mobileillustrator.render.BooleanOp
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
 import io.github.mhmmtbg.mobileillustrator.model.TextNode
+import io.github.mhmmtbg.mobileillustrator.model.WarpStyle
 import io.github.mhmmtbg.mobileillustrator.model.ZMove
 import io.github.mhmmtbg.mobileillustrator.model.findNode
 import io.github.mhmmtbg.mobileillustrator.model.anchorAt
@@ -146,12 +149,26 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                 if (rail) ToolRail(vm)
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     CanvasView(vm, Modifier.fillMaxSize())
-                    if (state.layersOpen && !wide) {
-                        LayersPanel(vm, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
-                    }
                     // Seçime göre değişen eylemler tuvalin alt kenarının üzerinde durur; belirip kaybolmaları
                     // tuvalin boyutunu (dolayısıyla görünümü) değiştirmez.
-                    ContextBar(vm, Modifier.align(Alignment.BottomCenter), onRename = { renaming = it }, onTransform = { showTransform = true })
+                    // Dik telefonda katman paneli alttan açılır: tuvalin üst yarısı görünür kalır, listeden seçilen
+                    // nesne tuvalde de görülür ve eylem çubuğu panelin üzerinde kullanılabilir durur.
+                    val sheet = !wide && !rail
+                    if (sheet) {
+                        Column(
+                            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                                .onSizeChanged { vm.obscuredBottomPx = if (state.layersOpen) it.height.toFloat() else 0f },
+                        ) {
+                            ContextBar(vm, Modifier, onRename = { renaming = it }, onTransform = { showTransform = true })
+                            if (state.layersOpen) LayersPanel(vm, Modifier.fillMaxWidth().fillMaxHeight(0.46f))
+                        }
+                    } else {
+                        SideEffect { vm.obscuredBottomPx = 0f }
+                        ContextBar(vm, Modifier.align(Alignment.BottomCenter), onRename = { renaming = it }, onTransform = { showTransform = true })
+                        if (state.layersOpen && !wide) {
+                            LayersPanel(vm, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
+                        }
+                    }
                     state.busy?.let { BusyOverlay(it) }
                     state.message?.let { msg ->
                         LaunchedEffect(msg) {
@@ -222,7 +239,7 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
         if (node == null) renaming = null else NameDialog(tr("Yeniden adlandır"), node.name, onDismiss = { renaming = null }) { renaming = null; vm.renameNode(id, it) }
     }
     state.textPrompt?.let {
-        TextDialog(it, vm.fonts, onLoadFont = { host.pickFont(vm::importFont) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
+        TextDialog(it, vm.systemFonts, vm.fonts, onLoadFont = { host.pickFont(vm::importFont) }, onDismiss = vm::dismissTextPrompt, onConfirm = vm::confirmText)
     }
     if (state.trace != null) TraceDialog(vm)
     if (state.warnings.isNotEmpty()) WarningsDialog(state.warnings, vm::dismissWarnings)
@@ -357,6 +374,9 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
     if (state.selection.isEmpty() && mode != 0) mode = 0
     val doc = state.history.present
     val edit = state.nodeEdit
+    // Eğme ayarı açıkken seçili metin (sürgü oynarken önizlemedeki hali).
+    val warpNode = state.selection.singleOrNull()?.let { state.document.findNode(it) } as? TextNode
+    if (mode == 3 && warpNode == null) mode = 0
     when {
         state.pen != null -> {
             actions += tr("Bitir") to { vm.finishPen(close = false) }
@@ -382,6 +402,13 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
                 actions += tr("Dikey dağıt") to { vm.distributeSelection(false) }
             }
         }
+        state.selection.isNotEmpty() && mode == 3 -> {
+            actions += tr("‹ Geri") to { mode = 0 }
+            actions += tr("Eğme yok") to { vm.setTextWarp(null, 0.0, done = true) }
+            for ((style, label) in WarpLabels) {
+                actions += tr(label) to { vm.setTextWarp(style, warpNode?.warp?.bend?.takeIf { it != 0.0 } ?: 0.5, done = true) }
+            }
+        }
         state.selection.isNotEmpty() && mode == 2 -> {
             actions += tr("‹ Geri") to { mode = 0 }
             actions += tr("Birleştir") to { mode = 0; vm.pathfinder(BooleanOp.Unite) }
@@ -400,6 +427,7 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
             if (single is ImageNode) actions += tr("Vektöre çevir") to vm::startTrace
             if (single is TextNode) {
                 actions += tr("Metni düzenle") to vm::editSelectedText
+                actions += tr("Eğ") to { mode = 3 }
                 actions += tr("Yola çevir") to vm::outlineSelectedText
             }
             actions += tr("Çoğalt") to vm::duplicateSelection
@@ -416,13 +444,36 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
     if (actions.isEmpty()) return
     // Silme düğmesi satırın sonunda sabit durur: eylemler kaydırılsa da her zaman görünür.
     val canDelete = state.selection.isNotEmpty() && state.pen == null && !(state.tool == Tool.Direct && edit?.anchor != null)
-    Row(
+    val activeWarp = if (mode == 3) warpNode?.warp else null
+    val activeLabel = when {
+        mode != 3 -> null
+        activeWarp == null -> tr("Eğme yok")
+        else -> WarpLabels.firstOrNull { it.first == activeWarp.style }?.let { tr(it.second) }
+    }
+    Column(
         modifier
             .fillMaxWidth()
             .background(AppColors.Panel.copy(alpha = 0.94f))
             // Çubuğa dokunuş alttaki tuvale geçmesin.
             .clickable(interactionSource = null, indication = null) {}
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+    ) {
+    if (activeWarp != null) {
+        // Eğim sürgüsü: oynarken tuvalde anında görülür, bırakınca geçmişe işlenir.
+        var live by remember(activeWarp.style) { mutableStateOf(activeWarp.bend.toFloat()) }
+        Row(Modifier.padding(horizontal = 16.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("%${(live * 100).roundToInt()}", Modifier.width(52.dp), style = MaterialTheme.typography.labelMedium, color = AppColors.OnPanelMuted)
+            Slider(
+                value = live,
+                onValueChange = { live = it; vm.setTextWarp(activeWarp.style, it.toDouble(), done = false) },
+                onValueChangeFinished = { vm.setTextWarp(activeWarp.style, live.toDouble(), done = true) },
+                valueRange = -1f..1f,
+                modifier = Modifier.weight(1f).semantics { contentDescription = tr("Eğim") },
+            )
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
     Row(
@@ -441,7 +492,11 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
                     .background(AppColors.PanelRaised)
                     .clickable(role = Role.Button, onClick = action)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
-                color = if (label == tr("Düğümü sil")) Color(0xFFFF8A8A) else AppColors.OnPanel,
+                color = when (label) {
+                    tr("Düğümü sil") -> Color(0xFFFF8A8A)
+                    activeLabel -> AppColors.Accent
+                    else -> AppColors.OnPanel
+                },
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
             )
@@ -456,7 +511,17 @@ private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (Strin
         }
     }
     }
+    }
 }
+
+/** Metin eğme biçimleri ve (kaynak dildeki) adları. */
+private val WarpLabels = listOf(
+    WarpStyle.Arc to "Yay",
+    WarpStyle.Arch to "Kemer",
+    WarpStyle.Wave to "Dalga",
+    WarpStyle.Bulge to "Şişkin",
+    WarpStyle.Rise to "Yükselen",
+)
 
 @Composable
 private fun PaintRow(vm: EditorViewModel, onCustomColor: () -> Unit, onGradient: () -> Unit, onStrokeOptions: () -> Unit) {

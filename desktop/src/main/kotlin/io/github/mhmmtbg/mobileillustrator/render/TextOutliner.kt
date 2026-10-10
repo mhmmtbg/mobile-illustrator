@@ -8,8 +8,17 @@ import org.jetbrains.skia.Path as SkiaPath
 /** Metni bilgisayardaki fontla yola çevirir (dışa aktarmada font bağımlılığını kaldırmak için). */
 object TextOutliner {
 
-    /** Metnin yerel uzayında (taban çizgisi başlangıcı 0,0) dış hatları; eğriler eğri olarak kalır. */
+    /**
+     * Metnin yerel uzayında (taban çizgisi başlangıcı 0,0) görünen dış hatları: dosyadan gelen harf biçimleri
+     * varsa onlar, yoksa bilgisayardaki fontla çıkarılanlar; metin eğilmişse bükülmüş halleri.
+     */
     fun outline(node: TextNode): List<SubPath> {
+        val base = node.outline ?: plain(node)
+        return node.warp?.apply(base) ?: base
+    }
+
+    /** Bilgisayardaki fontla, eğilmemiş dış hatlar. */
+    private fun plain(node: TextNode): List<SubPath> {
         val font = DocumentRenderer.fontFor(node)
         val path = SkiaPath()
         DocumentRenderer.forEachLine(node, font) { line, x, y ->

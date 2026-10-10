@@ -53,6 +53,9 @@ abstract class DocumentIo(root: File) {
      */
     abstract fun decodePixels(image: ImageData, maxSide: Int): PixelImage
 
+    /** Bu cihazda seçilebilen hazır fontlar: görünen ad ve metin düğümüne yazılacak aile adı. */
+    abstract fun systemFonts(): List<Pair<String, String>>
+
     /** Dosya bu platformda font olarak açılabiliyor mu. */
     protected abstract fun isValidFont(file: File): Boolean
 
@@ -104,7 +107,7 @@ abstract class DocumentIo(root: File) {
 
     fun encode(doc: Document, format: ExportFormat): ByteArray = when (format) {
         ExportFormat.Ai, ExportFormat.Pdf -> AiExporter.export(doc, exportOptions)
-        ExportFormat.Svg -> SvgExporter.export(doc).toByteArray(Charsets.UTF_8)
+        ExportFormat.Svg -> SvgExporter.export(doc, outlineText = { TextOutliner.outline(it) }).toByteArray(Charsets.UTF_8)
         ExportFormat.Png -> renderPng(doc, 4096, transparent = true)
     }
 

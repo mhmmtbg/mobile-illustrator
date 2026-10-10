@@ -37,6 +37,8 @@ class AndroidDocumentIo(private val app: Application) : DocumentIo(app.filesDir)
         }
     }
 
+    override fun systemFonts(): List<Pair<String, String>> = DocumentRenderer.SYSTEM_FONTS
+
     override fun isValidFont(file: File): Boolean {
         val ok = Typeface.createFromFile(file) != null
         // Aynı adla yeniden yüklenen font eski biçimiyle kalmasın.

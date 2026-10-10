@@ -58,6 +58,9 @@ internal class TextProps(
     val matrix: Matrix,
     val align: String = "Start",
     val lineHeight: Double = 1.2,
+    /** Metin eğme biçiminin adı ve miktarı (yoksa `null`). */
+    val warpStyle: String? = null,
+    val warpBend: Double = 0.0,
 )
 
 internal class LayerInfo(val name: String, val visible: Boolean, val locked: Boolean)
@@ -359,6 +362,8 @@ internal class ContentRunner(private val file: PdfFile, private val sink: Conten
                     matrix = gs.ctm * m,
                     align = file.name(d["A"]) ?: "Start",
                     lineHeight = file.num(d["LH"]) ?: 1.2,
+                    warpStyle = file.name(d["W"]),
+                    warpBend = file.num(d["WB"]) ?: 0.0,
                 )
             }
             containers += Container(nm, gs.clip, unwrapSingle = kind != "Group", text = text)

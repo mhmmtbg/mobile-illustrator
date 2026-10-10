@@ -37,6 +37,8 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 - Katman ekle, sil, yeniden adlandır, sırala, gizle, kilitle; nesneleri katmanlar arasında taşı.
 - Her katmanın içindeki nesne ağacı (gruplar, kırpma grupları) panelden gezilir ve seçilir.
 - Tuvalde seçilen nesne "Katmanda göster" ile listede bulunur; listeden seçilen nesne tuvalde seçilir ve ekran dışındaysa görünüme getirilir.
+- Telefonda panel alttan açılır: tuval üstte görünür kalır, listeden seçtiğin nesneyi tuvalde görürsün.
+  Katmanın menüsünden o katmandaki tüm nesneler seçilebilir.
 
 **Çizim ve düzenleme**
 - Seçim: taşı, ölçekle, döndür, çerçeveyle çoklu seç; sayısal genişlik/yükseklik/açı, yatay ve dikey çevirme.
@@ -46,7 +48,10 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 - Şekil işlemleri: birleştir, öndekini çıkar, kesiştir, dışla. Kırpma maskesi yap/bırak.
 - Dolgu ve kontur: düz renk, doğrusal/dairesel gradyan (duraklar ve açı), opaklık; kontur kalınlığı, uç, köşe, kesikli çizgi.
 - Renk seçici: renk tekerleği ve parlaklık, renk kodu (#RRGGBB) ve R/G/B değerleri; baskı için CMYK modu.
-- Metin: çok satır, hizalama, satır aralığı, kalın/eğik, kendi `.ttf`/`.otf` fontunu yükleme, yola çevirme.
+- Metin: çok satır, hizalama, satır aralığı, kalın/eğik; font listesinden seçim (cihazın fontları ve kendi
+  yüklediğin `.ttf`/`.otf` dosyaları); yola çevirme.
+- Metin eğme: yay, kemer, dalga, şişkin, yükselen. Metin düzenlenebilir kalır; eğim alt çubuktaki sürgüyle,
+  tuvalde görerek ayarlanır.
 - Grupla, grubu çöz, çoğalt, sıralama, geri al/yinele, görsel yerleştirme.
 - Seçim varken silme düğmesi alt çubuğun sonunda sabit durur.
 

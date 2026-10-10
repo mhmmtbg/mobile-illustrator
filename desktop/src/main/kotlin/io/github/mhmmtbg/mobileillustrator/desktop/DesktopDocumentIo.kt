@@ -26,6 +26,9 @@ class DesktopDocumentIo(private val root: File) : DocumentIo(root) {
     private val typefaces = HashMap<String, Typeface?>()
 
     init {
+        // Çizim kitaplığı (Skia) burada, tek iş parçacığında yüklenir. Yükleme sürerken başka bir iş parçacığı
+        // kitaplığı kullanmaya kalkarsa "yüklü" sanıp çöker; arka plan işleri (font listesi, küçük resim) bundan sonra başlar.
+        org.jetbrains.skiko.Library.load()
         root.mkdirs()
         // Yüklenen fontlar çizicide adlarıyla bulunur.
         DocumentRenderer.customFonts = ::typeface
@@ -37,6 +40,9 @@ class DesktopDocumentIo(private val root: File) : DocumentIo(root) {
             try { FontMgr.default.makeFromFile(file.path) } catch (e: RuntimeException) { null }
         }
     }
+
+    override fun systemFonts(): List<Pair<String, String>> =
+        listOf("Sans" to "sans-serif", "Serif" to "serif", "Mono" to "monospace") + DocumentRenderer.systemFamilies().map { it to it }
 
     override fun isValidFont(file: File): Boolean {
         val ok = FontMgr.default.makeFromFile(file.path) != null

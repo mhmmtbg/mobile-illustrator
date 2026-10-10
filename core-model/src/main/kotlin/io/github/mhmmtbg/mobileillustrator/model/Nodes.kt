@@ -123,9 +123,17 @@ data class TextNode(
      * böylece cihazda o font olmasa da görünüm aynı kalır. Metin düzenlenince düşer ve cihaz fontuna geçilir.
      */
     val outline: List<SubPath>? = null,
+    /** Metin eğme (yay, dalga…); `null` ise metin düzdür. */
+    val warp: TextWarp? = null,
 ) : Node {
-    /** Yerel uzaydaki yaklaşık kutu. */
+    /** Yerel uzaydaki yaklaşık kutu (eğme dahil). */
     fun localBounds(): Rect {
+        val flat = flatBounds()
+        return warp?.bounds(flat) ?: flat
+    }
+
+    /** Eğilmemiş metnin yerel uzaydaki yaklaşık kutusu. */
+    fun flatBounds(): Rect {
         outline?.mapNotNull { it.bounds() }?.reduceOrNull(Rect::union)?.let { return it }
         val lines = text.split('\n')
         val w = measuredWidth ?: ((lines.maxOfOrNull { it.length } ?: 0) * fontSize * 0.55)

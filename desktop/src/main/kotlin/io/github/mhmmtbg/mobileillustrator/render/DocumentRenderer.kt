@@ -232,7 +232,39 @@ class DocumentRenderer {
         return image
     }
 
+    /** Eğilmiş metnin yolu; metnin biçimini belirleyen özellikler değişmedikçe yeniden kurulmaz. */
+    private class WarpedText(val node: TextNode, val path: SkiaPath)
+
+    private val warpCache = HashMap<String, WarpedText>()
+
+    private fun warpedPath(node: TextNode): SkiaPath {
+        val cached = warpCache[node.id]
+        if (cached != null) {
+            val o = cached.node
+            if (o === node || (o.text == node.text && o.warp == node.warp && o.fontSize == node.fontSize && o.fontFamily == node.fontFamily &&
+                    o.bold == node.bold && o.italic == node.italic && o.align == node.align && o.lineHeight == node.lineHeight &&
+                    o.measuredWidth == node.measuredWidth && o.outline === node.outline)
+            ) {
+                return cached.path
+            }
+        }
+        if (warpCache.size > 2000) warpCache.clear()
+        val path = SkiaPath()
+        fillPath(path, TextOutliner.outline(node), FillRule.NonZero)
+        warpCache[node.id] = WarpedText(node, path)
+        return path
+    }
+
     private fun drawText(canvas: Canvas, node: TextNode) {
+        if (node.warp != null) {
+            // Eğilmiş metin: harf biçimleri bükülür ve yol olarak çizilir.
+            val path = warpedPath(node)
+            node.fill?.let { applyPaint(fillPaint, it, node.opacity); fillPaint.blendMode = toSkia(node.blendMode); canvas.drawPath(path, fillPaint) }
+            node.stroke?.takeIf { it.width > 0.0 }?.let {
+                applyStroke(strokePaint, it, node.opacity); strokePaint.blendMode = toSkia(node.blendMode); canvas.drawPath(path, strokePaint)
+            }
+            return
+        }
         node.outline?.let { shapes ->
             // Dosyadaki fontun harf biçimleri: yol olarak çizilir.
             val cached = pathCache[node.id]
@@ -392,6 +424,21 @@ class DocumentRenderer {
             }
         }
 
+        private val genericFamilies = setOf("sans-serif", "serif", "monospace")
+        private val installed: Set<String> by lazy {
+            val manager = FontMgr.default
+            (0 until manager.familiesCount).map { manager.getFamilyName(it) }.toSet()
+        }
+
+        /** Bilgisayarda yüklü font aileleri (ada göre sıralı). */
+        fun systemFamilies(): List<String> = installed.filter { it.isNotBlank() && !it.startsWith(".") }.sortedBy { it.lowercase() }
+
+        /** Adı tam olarak tutan yüklü font; genel adlar (sans-serif…) ve bilinmeyen adlar için `null`. */
+        private fun exactFamily(name: String, style: FontStyle): Typeface? {
+            if (name in genericFamilies || name !in installed) return null
+            return synchronized(typefaces) { typefaces.getOrPut("=" + name + style) { FontMgr.default.matchFamilyStyle(name, style) } }
+        }
+
         /** Metin düğümünün yazı tipi, boyutu ve (biliniyorsa) özgün genişliğe uyacak yatay ölçeğiyle fontu. */
         fun fontFor(node: TextNode): Font {
             val style = when {
@@ -406,7 +453,7 @@ class DocumentRenderer {
                 customFonts?.invoke(node.fontFamily.removePrefix(CUSTOM_FONT_PREFIX))?.also { synthesize = true }
             } else {
                 null
-            } ?: run {
+            } ?: exactFamily(node.fontFamily, style) ?: run {
                 val family = node.fontFamily.lowercase()
                 val families = when {
                     family.contains("mono") || family.contains("courier") -> monoFamilies

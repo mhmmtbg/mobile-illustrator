@@ -171,6 +171,7 @@ private fun LayerRow(vm: EditorViewModel, row: PanelRow.OfLayer, onRename: () ->
                 @Composable
                 fun item(label: String, enabled: Boolean = true, action: () -> Unit) =
                     DropdownMenuItem(text = { Text(label) }, enabled = enabled, onClick = { menu = false; action() })
+                item(tr("Katmandaki nesneleri seç"), enabled = layer.children.isNotEmpty()) { vm.selectLayerObjects(layer.id) }
                 item(tr("Yeniden adlandır"), action = onRename)
                 item(tr("Öne taşı"), enabled = row.index < row.count - 1) { vm.moveLayer(layer.id, up = true) }
                 item(tr("Arkaya taşı"), enabled = row.index > 0) { vm.moveLayer(layer.id, up = false) }
