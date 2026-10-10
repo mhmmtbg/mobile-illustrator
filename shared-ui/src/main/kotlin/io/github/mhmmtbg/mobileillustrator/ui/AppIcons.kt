@@ -229,4 +229,7 @@ object AppIcons {
     val TextLeft by lazy { icon("TextLeft", r(3, 5, 18, 2) + r(3, 9, 12, 2) + r(3, 13, 18, 2) + r(3, 17, 10, 2)) }
     val TextCenter by lazy { icon("TextCenter", r(3, 5, 18, 2) + r(6, 9, 12, 2) + r(3, 13, 18, 2) + r(7, 17, 10, 2)) }
     val TextRight by lazy { icon("TextRight", r(3, 5, 18, 2) + r(9, 9, 12, 2) + r(3, 13, 18, 2) + r(11, 17, 10, 2)) }
+    val Legend by lazy {
+        icon("Legend", r(3, 5, 6, 6) + r(11, 6, 10, 1.6) + r(11, 8.6, 7, 1.6) + r(3, 13, 6, 6) + r(11, 14, 10, 1.6) + r(11, 16.6, 7, 1.6))
+    }
 }

@@ -16,7 +16,7 @@ private fun Paint.colors(): List<Rgba> = when (this) {
 
 /**
  * Belgedeki renkler, en çok kullanılandan aza doğru. Kilitli katmanlar ve kilitli nesneler sayılmaz
- * (renkleri toplu değiştirilmez); gizli olanlar sayılır.
+ * (renkleri toplu değiştirilmez); gizli olanlar sayılır. Renk lejantı katmanı da sayılmaz.
  */
 fun Document.colorGroups(): List<ColorGroup> {
     class Acc(val color: Rgba) {
@@ -44,7 +44,8 @@ fun Document.colorGroups(): List<ColorGroup> {
             }
         }
     }
-    for (l in layers) if (!l.locked) walk(l.children)
+    // Renk lejantı tasarımın parçası sayılmaz: kendi örnek kareleri ve yazıları listeyi şişirmesin.
+    for (l in layers) if (!l.locked && l.name != LEGEND_LAYER) walk(l.children)
     return groups.entries
         .map { (rgb, acc) -> ColorGroup(rgb, acc.color, acc.ids.toList(), acc.fills, acc.strokes) }
         .sortedByDescending { it.nodeIds.size }
@@ -86,7 +87,7 @@ fun Document.recolored(rgb: Int, to: Rgba): Document {
     }
     var changed = false
     val newLayers = layers.map { l ->
-        if (l.locked) l else walk(l.children).let { if (it === l.children) l else { changed = true; l.copy(children = it) } }
+        if (l.locked || l.name == LEGEND_LAYER) l else walk(l.children).let { if (it === l.children) l else { changed = true; l.copy(children = it) } }
     }
     return if (changed) copy(layers = newLayers) else this
 }

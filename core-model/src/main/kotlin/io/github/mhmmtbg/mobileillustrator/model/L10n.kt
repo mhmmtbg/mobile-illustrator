@@ -363,6 +363,15 @@ object L10n {
         "Harf aralığı" to "Letter spacing",
         "Satır" to "Line",
         "Harf" to "Letter",
+        "Renk lejantı" to "Colour legend",
+        "%s renk kodları" to "%s colour codes",
+        "Renk lejantı eklendi: %s renk" to "Colour legend added: %s colours",
+        "Tasarımda kullanılan renkler, seçtiğin kodlarıyla çalışma yüzeyinin altına eklenir." to "The colours used in the design are added at the bottom of the artboard with the codes you choose.",
+        "Renk kodu (#RRGGBB)" to "Colour code (#RRGGBB)",
+        "RGB değerleri" to "RGB values",
+        "CMYK değerleri" to "CMYK values",
+        "Kodları metin olarak paylaş" to "Share codes as text",
+        "Tasarıma ekle" to "Add to design",
     )
 }
 

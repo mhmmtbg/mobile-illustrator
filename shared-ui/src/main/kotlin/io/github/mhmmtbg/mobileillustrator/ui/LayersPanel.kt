@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
 import io.github.mhmmtbg.mobileillustrator.model.colorGroups
+import io.github.mhmmtbg.mobileillustrator.model.LegendOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import io.github.mhmmtbg.mobileillustrator.model.ImageNode
@@ -64,10 +65,11 @@ private sealed interface PanelRow {
 
 /** Katmanlar ve içlerindeki nesneler; Illustrator'daki gibi en üstteki en başta. */
 @Composable
-fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
+fun LayersPanel(vm: EditorViewModel, host: PlatformHost, modifier: Modifier = Modifier) {
     val state = vm.state
     val doc = state.document
     var renaming by remember { mutableStateOf<String?>(null) }
+    var legend by remember { mutableStateOf(false) }
 
     val rows = ArrayList<PanelRow>()
     fun addNodes(nodes: List<Node>, depth: Int) {
@@ -89,6 +91,10 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
             )
             // Renklere göre gruplama: liste katmanlar yerine belgedeki renkleri gösterir.
             HeaderButton(AppIcons.Palette, tr("Renklere göre grupla"), active = state.colorView, onClick = vm::toggleColorView)
+            if (state.colorView) {
+                // Lejant: kullanılan renkler kodlarıyla tasarıma eklenir ya da metin olarak paylaşılır.
+                HeaderButton(AppIcons.Legend, tr("Renk lejantı"), onClick = { legend = true })
+            }
             if (!state.colorView) {
                 // Çoklu seçim: açıkken satırlara dokunmak seçime ekler; seçilenler kopyalanıp başka belgeye yapıştırılabilir.
                 HeaderButton(AppIcons.MultiSelect, tr("Çoklu seçim"), active = state.multiSelect, onClick = vm::toggleMultiSelect)
@@ -124,10 +130,50 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
         }
     }
 
+    if (legend) {
+        LegendDialog(
+            onDismiss = { legend = false },
+            onShare = { host.shareText(tr("%s renk kodları", trName(state.history.present.name)), vm.colorCodesText(it)) },
+            onAdd = { legend = false; vm.addColorLegend(it) },
+        )
+    }
     renaming?.let { id ->
         val layer = doc.layers.firstOrNull { it.id == id }
         if (layer == null) renaming = null else NameDialog(tr("Katmanı adlandır"), layer.name, onDismiss = { renaming = null }) { renaming = null; vm.renameLayer(id, it) }
     }
+}
+
+/** Renk lejantı: hangi kodların yazılacağı seçilir; lejant tasarıma eklenir ya da kodlar metin olarak paylaşılır. */
+@Composable
+private fun LegendDialog(onDismiss: () -> Unit, onShare: (LegendOptions) -> Unit, onAdd: (LegendOptions) -> Unit) {
+    var hex by remember { mutableStateOf(true) }
+    var rgb by remember { mutableStateOf(true) }
+    var cmyk by remember { mutableStateOf(true) }
+    val options = LegendOptions(hex, rgb, cmyk)
+    val any = hex || rgb || cmyk
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr("Renk lejantı")) },
+        text = {
+            Column {
+                Text(tr("Tasarımda kullanılan renkler, seçtiğin kodlarıyla çalışma yüzeyinin altına eklenir."), style = MaterialTheme.typography.bodySmall)
+                @Composable
+                fun check(label: String, on: Boolean, set: (Boolean) -> Unit) = Row(
+                    Modifier.fillMaxWidth().clickable(role = Role.Checkbox) { set(!on) }.semantics { selected = on },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.Checkbox(on, null, Modifier.padding(vertical = 10.dp, horizontal = 4.dp))
+                    Text(label)
+                }
+                check(tr("Renk kodu (#RRGGBB)"), hex) { hex = it }
+                check(tr("RGB değerleri"), rgb) { rgb = it }
+                check(tr("CMYK değerleri"), cmyk) { cmyk = it }
+                androidx.compose.material3.TextButton(onClick = { onShare(options) }, enabled = any) { Text(tr("Kodları metin olarak paylaş")) }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onAdd(options) }, enabled = any) { Text(tr("Tasarıma ekle")) } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
+    )
 }
 
 /** Panel başlığındaki düğme; dar panelde de sığsın diye üst çubuktakilerden biraz küçüktür. */

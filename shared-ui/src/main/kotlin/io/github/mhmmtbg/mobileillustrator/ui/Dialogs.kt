@@ -83,6 +83,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.semantics.selected
 import io.github.mhmmtbg.mobileillustrator.model.Ink
 import io.github.mhmmtbg.mobileillustrator.model.Rgba
+import io.github.mhmmtbg.mobileillustrator.model.toCmyk
 
 @Composable
 fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
@@ -358,6 +359,24 @@ fun TextDialog(
     }
 }
 
+/**
+ * Pencere içeriğine ayrılabilecek en büyük yükseklik: ekranın klavye ve sistem çubuklarından arta kalan kısmından
+ * başlık ve düğmelerin payı düşülür. Böylece büyük ekranda içerik kaydırmadan sığar, klavye açıkken düğmeler görünür kalır.
+ */
+@Composable
+private fun WithDialogSpace(content: @Composable (maxContent: androidx.compose.ui.unit.Dp) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val insets = WindowInsets.safeDrawing
+        val density = LocalDensity.current
+        val taken = with(density) { (insets.getTop(density) + insets.getBottom(density)).toDp() }
+        content((maxHeight - taken - 260.dp).coerceIn(220.dp, 720.dp))
+    }
+}
+
+/**
+ * Renk seçici. RGB ve CMYK modlarının ikisinde de renk tekerleğinden seçilir; CMYK modunda mürekkep sürgüleri de
+ * durur ve dosyaya CMYK değerleri yazılır. Seçilen rengin kodu, RGB ve CMYK değerleri her zaman görünür.
+ */
 @Composable
 fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Unit) {
     val hsv0 = remember { argbToHsv(initial.copy(a = 1.0).toArgb()) }
@@ -368,72 +387,91 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
     // Baskı işi için CMYK: değerler dosyaya RGB'ye çevrilmeden yazılır.
     val ink0 = initial.ink
     var cmykMode by remember { mutableStateOf(ink0 is Ink.Cmyk) }
-    val start = ink0 as? Ink.Cmyk
-    var c by remember { mutableStateOf((start?.c ?: 0.0).toFloat()) }
-    var m by remember { mutableStateOf((start?.m ?: 0.0).toFloat()) }
-    var y by remember { mutableStateOf((start?.y ?: 0.0).toFloat()) }
-    var k by remember { mutableStateOf((start?.k ?: 0.0).toFloat()) }
+    val start = remember { initial.toCmyk() }
+    var c by remember { mutableStateOf(start.c.toFloat()) }
+    var m by remember { mutableStateOf(start.m.toFloat()) }
+    var y by remember { mutableStateOf(start.y.toFloat()) }
+    var k by remember { mutableStateOf(start.k.toFloat()) }
     fun argb() = hsvToArgb(hue, sat, value)
-    fun syncHex() { hex = "%06X".format(argb() and 0xFFFFFF) }
     fun cmyk() = Ink.Cmyk(c.toDouble(), m.toDouble(), y.toDouble(), k.toDouble())
     fun step(v: Float) = (v * 100).toInt() / 100f
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(tr("Renk seç")) },
-        text = {
-            // Yükseklik sınırlı: klavye açıkken Uygula/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
-            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                val shown = if (cmykMode) cmyk().toRgb().toArgb() else argb()
-                val preview = Color(shown)
-                // Seçilen rengin kodu, rengin üzerinde okunur biçimde gösterilir.
-                val code = "#%06X".format(shown and 0xFFFFFF)
-                val red = (shown shr 16) and 0xFF
-                val green = (shown shr 8) and 0xFF
-                val blue = shown and 0xFF
-                val onPreview = if (red * 0.299 + green * 0.587 + blue * 0.114 > 150) Color.Black else Color.White
-                Box(
-                    Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(preview)
-                        .semantics { contentDescription = tr("Renk kodu: %s", code) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(code, color = onPreview, style = MaterialTheme.typography.titleMedium)
-                }
-                Text(
-                    if (cmykMode) {
-                        "C %d  M %d  Y %d  K %d".format((c * 100).toInt(), (m * 100).toInt(), (y * 100).toInt(), (k * 100).toInt())
-                    } else {
-                        "R %d  G %d  B %d".format(red, green, blue)
-                    },
-                    Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.labelMedium,
-                    textAlign = TextAlign.Center,
-                )
-                (ink0 as? Ink.Spot)?.let { spot ->
-                    Text(
-                        tr("Şu anki renk bir spot renk: %s (%%%s). Buradan renk seçersen spot tanımı kalkar.", spot.name, (spot.tint * 100).toInt()),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                ChoiceRow(tr("Renk modeli"), listOf("RGB" to !cmykMode, "CMYK" to cmykMode)) { cmykMode = it == 1 }
-                if (cmykMode) {
-                    @Composable
-                    fun ink(label: String, v: Float, set: (Float) -> Unit) {
-                        Text("$label %${(v * 100).toInt()}", style = MaterialTheme.typography.labelMedium)
-                        Slider(v, { set(step(it)) }, modifier = Modifier.semantics { contentDescription = label })
+    fun shown() = if (cmykMode) cmyk().toRgb().toArgb() else argb()
+    fun syncHex() { hex = "%06X".format(shown() and 0xFFFFFF) }
+    /** Tekerlekteki renk mürekkep değerlerine çevrilir (CMYK modunda tekerlekten seçince). */
+    fun inksFromWheel() {
+        val ink = Rgba.fromArgb(argb()).toCmyk()
+        c = step(ink.c.toFloat() + 0.005f); m = step(ink.m.toFloat() + 0.005f); y = step(ink.y.toFloat() + 0.005f); k = step(ink.k.toFloat() + 0.005f)
+    }
+    /** Mürekkep sürgüleri oynayınca tekerlekteki işaret de o rengin yerine gider. */
+    fun wheelFromInks() {
+        val hsv = argbToHsv(cmyk().toRgb().toArgb())
+        hue = hsv[0]; sat = hsv[1]; value = hsv[2]
+    }
+    WithDialogSpace { maxContent ->
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(tr("Renk seç")) },
+            text = {
+                // Yükseklik sınırlı: klavye açıkken Uygula/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
+                Column(Modifier.heightIn(max = maxContent).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val now = shown()
+                    val preview = Color(now)
+                    // Seçilen rengin kodu, rengin üzerinde okunur biçimde gösterilir.
+                    val code = "#%06X".format(now and 0xFFFFFF)
+                    val red = (now shr 16) and 0xFF
+                    val green = (now shr 8) and 0xFF
+                    val blue = now and 0xFF
+                    val onPreview = if (red * 0.299 + green * 0.587 + blue * 0.114 > 150) Color.Black else Color.White
+                    Box(
+                        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp)).background(preview)
+                            .semantics { contentDescription = tr("Renk kodu: %s", code) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(code, color = onPreview, style = MaterialTheme.typography.titleMedium)
                     }
-                    ink(tr("Camgöbeği (C)"), c) { c = it }
-                    ink(tr("Macenta (M)"), m) { m = it }
-                    ink(tr("Sarı (Y)"), y) { y = it }
-                    ink(tr("Siyah (K)"), k) { k = it }
-                    Text(tr("Ekrandaki renk yaklaşık bir önizlemedir; dosyaya bu CMYK değerleri yazılır."), style = MaterialTheme.typography.bodySmall)
-                } else {
+                    // RGB ve CMYK değerleri her iki modda da görünür. RGB modunda CMYK, renkten hesaplanan yaklaşık karşılıktır.
+                    val inks = if (cmykMode) cmyk() else Rgba.fromArgb(now).toCmyk()
+                    fun pct(v: Double) = Math.round(v * 100).toInt()
+                    val rgbText = "RGB  %d  %d  %d".format(red, green, blue)
+                    val cmykText = "CMYK  %d  %d  %d  %d".format(pct(inks.c), pct(inks.m), pct(inks.y), pct(inks.k))
+                    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$rgbText, $cmykText" }, horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Text(rgbText, style = MaterialTheme.typography.labelMedium, color = if (cmykMode) AppColors.OnPanelMuted else AppColors.OnPanel, maxLines = 1)
+                        Text(cmykText, style = MaterialTheme.typography.labelMedium, color = if (cmykMode) AppColors.OnPanel else AppColors.OnPanelMuted, maxLines = 1)
+                    }
+                    (ink0 as? Ink.Spot)?.let { spot ->
+                        Text(
+                            tr("Şu anki renk bir spot renk: %s (%%%s). Buradan renk seçersen spot tanımı kalkar.", spot.name, (spot.tint * 100).toInt()),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    ChoiceRow(tr("Renk modeli"), listOf("RGB" to !cmykMode, "CMYK" to cmykMode)) {
+                        val toCmyk = it == 1
+                        if (toCmyk != cmykMode) {
+                            // Mod değişince renk aynı kalır: değerler öbür modele çevrilir.
+                            if (toCmyk) inksFromWheel() else wheelFromInks()
+                            cmykMode = toCmyk
+                            syncHex()
+                        }
+                    }
                     // Tekerlek: açı tonu, merkezden uzaklık doygunluğu verir. Parlaklık alttaki sürgüdedir.
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        ColorWheel(hue, sat, value) { h, sv -> hue = h; sat = sv; syncHex() }
+                        ColorWheel(hue, sat, value) { h, sv -> hue = h; sat = sv; if (cmykMode) inksFromWheel(); syncHex() }
                     }
-                    Text(tr("Parlaklık"), style = MaterialTheme.typography.labelMedium)
-                    Slider(value, { value = it; syncHex() }, modifier = Modifier.semantics { contentDescription = tr("Parlaklık") })
+                    @Composable
+                    fun slider(label: String, short: String, v: Float, set: (Float) -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(short, Modifier.width(74.dp), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                        Slider(v, set, modifier = Modifier.weight(1f).semantics { contentDescription = label })
+                    }
+                    slider(tr("Parlaklık"), tr("Parlaklık"), value) { value = it; if (cmykMode) inksFromWheel(); syncHex() }
+                    if (cmykMode) {
+                        // Mürekkepler tek tek de ayarlanabilir; tekerlekteki işaret onları izler.
+                        fun ink(set: (Float) -> Unit): (Float) -> Unit = { set(step(it)); wheelFromInks(); syncHex() }
+                        slider(tr("Camgöbeği (C)"), "C  %${(c * 100).toInt()}", c, ink { c = it })
+                        slider(tr("Macenta (M)"), "M  %${(m * 100).toInt()}", m, ink { m = it })
+                        slider(tr("Sarı (Y)"), "Y  %${(y * 100).toInt()}", y, ink { y = it })
+                        slider(tr("Siyah (K)"), "K  %${(k * 100).toInt()}", k, ink { k = it })
+                    }
                     OutlinedTextField(
                         hex,
                         { raw ->
@@ -442,17 +480,21 @@ fun ColorPickerDialog(initial: Rgba, onDismiss: () -> Unit, onPick: (Rgba) -> Un
                             if (clean.length == 6) clean.toIntOrNull(16)?.let { rgb ->
                                 val hsv = argbToHsv(rgb)
                                 hue = hsv[0]; sat = hsv[1]; value = hsv[2]
+                                if (cmykMode) inksFromWheel()
                             }
                         },
                         singleLine = true,
                         label = { Text(tr("Onaltılık (RRGGBB)")) },
                     )
+                    if (cmykMode) {
+                        Text(tr("Ekrandaki renk yaklaşık bir önizlemedir; dosyaya bu CMYK değerleri yazılır."), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onPick(if (cmykMode) cmyk().toRgb() else Rgba.fromArgb(argb())) }) { Text(tr("Uygula")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
-    )
+            },
+            confirmButton = { TextButton(onClick = { onPick(if (cmykMode) cmyk().toRgb() else Rgba.fromArgb(argb())) }) { Text(tr("Uygula")) } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
+        )
+    }
 }
 
 @Composable
@@ -692,7 +734,7 @@ private fun ColorWheel(hue: Float, saturation: Float, value: Float, onChange: (h
     val label = tr("Renk tekerleği")
     Canvas(
         Modifier
-            .size(190.dp)
+            .size(176.dp)
             .semantics { contentDescription = label }
             .pointerInput(Unit) {
                 fun pick(p: Offset) {

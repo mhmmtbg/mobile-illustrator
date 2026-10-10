@@ -162,13 +162,13 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                                 .onSizeChanged { vm.obscuredBottomPx = if (state.layersOpen) it.height.toFloat() else 0f },
                         ) {
                             ContextBar(vm, Modifier, onRename = { renaming = it }, onTransform = { showTransform = true })
-                            if (state.layersOpen) LayersPanel(vm, Modifier.fillMaxWidth().fillMaxHeight(0.46f))
+                            if (state.layersOpen) LayersPanel(vm, host, Modifier.fillMaxWidth().fillMaxHeight(0.46f))
                         }
                     } else {
                         SideEffect { vm.obscuredBottomPx = 0f }
                         ContextBar(vm, Modifier.align(Alignment.BottomCenter), onRename = { renaming = it }, onTransform = { showTransform = true })
                         if (state.layersOpen && !wide) {
-                            LayersPanel(vm, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
+                            LayersPanel(vm, host, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
                         }
                     }
                     state.busy?.let { BusyOverlay(it) }
@@ -190,7 +190,7 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                         )
                     }
                 }
-                if (state.layersOpen && wide) LayersPanel(vm, Modifier.fillMaxHeight().width(340.dp))
+                if (state.layersOpen && wide) LayersPanel(vm, host, Modifier.fillMaxHeight().width(340.dp))
             }
             HorizontalDivider(color = AppColors.Divider)
             Column(

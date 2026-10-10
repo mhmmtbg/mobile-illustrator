@@ -56,6 +56,10 @@ import io.github.mhmmtbg.mobileillustrator.model.merged
 import io.github.mhmmtbg.mobileillustrator.model.lockedNodesIn
 import io.github.mhmmtbg.mobileillustrator.model.colorGroups
 import io.github.mhmmtbg.mobileillustrator.model.recolored
+import io.github.mhmmtbg.mobileillustrator.model.LegendOptions
+import io.github.mhmmtbg.mobileillustrator.model.colorCodesText
+import io.github.mhmmtbg.mobileillustrator.model.withColorLegend
+import io.github.mhmmtbg.mobileillustrator.model.legendOptions
 import io.github.mhmmtbg.mobileillustrator.model.deleteAnchor
 import io.github.mhmmtbg.mobileillustrator.model.duplicate
 import io.github.mhmmtbg.mobileillustrator.model.findLayer
@@ -1253,7 +1257,34 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     fun recolor(rgb: Int, to: Rgba) {
         val count = present.colorGroups().firstOrNull { it.rgb == rgb }?.nodeIds?.size ?: return
         onDragCancel()
-        commit(present.recolored(rgb, to)) { it.copy(message = tr("%s nesnenin rengi değişti", count)) }
+        var doc = present.recolored(rgb, to)
+        // Tasarımda renk lejantı varsa o da yeni renklerle yenilenir (yeri ve boyutu baştan kurulur).
+        present.legendOptions()?.let { options -> doc.withColorLegend(options)?.let { doc = it.document } }
+        commit(doc) { s ->
+            s.copy(selection = s.selection.filterTo(HashSet()) { doc.findNode(it) != null }, message = tr("%s nesnenin rengi değişti", count))
+        }
+    }
+
+    /** Tasarımdaki renklerin kodları (onaltılık, RGB, CMYK); paylaşmak için düz metin. */
+    fun colorCodesText(options: LegendOptions): String = present.colorCodesText(options)
+
+    /** Tasarımda kullanılan renklerin lejantını çalışma yüzeyinin altına ekler (varsa eskisini yeniler). */
+    fun addColorLegend(options: LegendOptions) {
+        if (state.pen != null) finishPen()
+        onDragCancel()
+        val result = present.withColorLegend(options) ?: run {
+            state = state.copy(message = tr("Belgede renkli nesne yok"))
+            return
+        }
+        val doc = result.document
+        commit(doc) {
+            it.copy(
+                tool = Tool.Select, nodeEdit = null,
+                activeLayerId = if (doc.findLayer(it.activeLayerId) != null) it.activeLayerId else doc.layers.last().id,
+                message = tr("Renk lejantı eklendi: %s renk", result.colors),
+            ).withSelection(setOf(result.groupId))
+        }
+        present.boundsOf(result.groupId)?.let(::bringIntoView)
     }
 
     // ---- Pano: kopyala, kes, yapıştır (belgeler arasında da) -------------------
