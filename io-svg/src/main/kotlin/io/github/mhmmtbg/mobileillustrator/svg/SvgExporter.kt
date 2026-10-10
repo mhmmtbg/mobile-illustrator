@@ -231,7 +231,8 @@ object SvgExporter {
         }
 
         private fun text(n: TextNode) {
-            val shown = if (n.warp != null) (try { outlineText?.invoke(n) } catch (e: RuntimeException) { null }) ?: n.outline?.let { n.warp.apply(it) } else n.outline
+            val warp = n.warp
+            val shown = if (warp != null) (try { outlineText?.invoke(n) } catch (e: RuntimeException) { null }) ?: n.outline?.let { warp.apply(it) } else n.outline
             shown?.let { shapes ->
                 // Özgün fontun harf biçimleri: metin yol olarak yazılır, içerik aria-label'da kalır.
                 TAG = "<path"
