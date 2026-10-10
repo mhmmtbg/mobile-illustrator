@@ -51,6 +51,7 @@ class DocumentRenderer {
     private val matrixValues = FloatArray(9)
     private val clipScratch = AndroidPath()
     private val dst = RectF()
+    private val layerBounds = RectF()
 
     /** Yollar düğüm kimliğine göre saklanır; geometri değişmediyse (aynı liste nesnesi) yeniden kurulmaz. */
     private class CachedPath(val source: List<SubPath>, val rule: FillRule, val path: AndroidPath)
@@ -70,6 +71,8 @@ class DocumentRenderer {
         visible: io.github.mhmmtbg.mobileillustrator.model.Rect? = null,
         /** Çizilmeyecek üst düzey nesneler (sürüklenirken ayrıca çizilenler). */
         skip: Set<String>? = null,
+        /** Arka plan çiziminde: `true` dönerse çizim yarıda bırakılır (sonuç artık gerekmiyordur). */
+        stop: (() -> Boolean)? = null,
     ) {
         if (artboardColor != null) {
             artboardPaint.color = artboardColor
@@ -83,11 +86,15 @@ class DocumentRenderer {
             if (!layer.visible || layer.opacity <= 0.0) continue
             val isolated = layer.opacity < 1.0
             if (isolated) canvas.saveLayerAlpha(null, alphaOf(layer.opacity))
-            if (visible == null && skip == null) {
+            if (stop?.invoke() == true) {
+                // yarıda bırak
+            } else if (visible == null && skip == null) {
                 for (node in layer.children) drawNode(canvas, node)
             } else {
                 val index = if (visible != null) io.github.mhmmtbg.mobileillustrator.model.DocIndex.of(document) else null
+                var count = 0
                 for (node in layer.children) {
+                    if (stop != null && (count++ and 63) == 0 && stop()) break
                     if (skip != null && node.id in skip) continue
                     if (index != null && visible != null) {
                         // Görünen alanın dışındaki nesneler hiç çizilmez (yakınlaştırılmış büyük belgelerde asıl kazanç).
@@ -108,8 +115,14 @@ class DocumentRenderer {
         if (!node.transform.isIdentity) canvas.concat(toAndroid(node.transform, matrix))
         when (node) {
             is GroupNode -> {
-                node.clip?.let { canvas.clipPath(buildClip(it)) }
-                if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) saveBlendLayer(canvas, node.opacity, node.blendMode)
+                var layerBounds: RectF? = null
+                node.clip?.let {
+                    val clip = buildClip(it)
+                    canvas.clipPath(clip)
+                    // Kırpılmış grubun ara katmanı kırpma alanından büyük olamaz.
+                    layerBounds = RectF().also { r -> clip.computeBounds(r, true) }
+                }
+                if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) saveBlendLayer(canvas, node.opacity, node.blendMode, layerBounds)
                 for (child in node.children) drawNode(canvas, child)
             }
             is PathNode -> drawPath(canvas, node)
@@ -133,7 +146,12 @@ class DocumentRenderer {
         var alpha = node.opacity
         var blend = node.blendMode
         if (fill != null && stroke != null && (alpha < 1.0 || blend != BlendMode.Normal)) {
-            saveBlendLayer(canvas, alpha, blend)
+            // Ara katman yalnızca nesnenin kapladığı alan kadar açılır. Sınırsız katman tüm tuval boyutunda
+            // bellek ayırır; binlerce yarı saydam nesnede çizimi on kat yavaşlatır.
+            path.computeBounds(layerBounds, true)
+            val pad = (stroke.width / 2 * maxOf(1.0, stroke.miterLimit)).toFloat() + 1f
+            layerBounds.inset(-pad, -pad)
+            saveBlendLayer(canvas, alpha, blend, layerBounds)
             alpha = 1.0
             blend = BlendMode.Normal
         }
@@ -150,10 +168,10 @@ class DocumentRenderer {
     }
 
     /** Opaklığı ve karışım modunu içeriğin tamamına birden uygulamak için ara katman açar. */
-    private fun saveBlendLayer(canvas: Canvas, opacity: Double, blend: BlendMode) {
+    private fun saveBlendLayer(canvas: Canvas, opacity: Double, blend: BlendMode, bounds: RectF? = null) {
         layerPaint.alpha = alphaOf(opacity)
         setBlend(layerPaint, blend)
-        canvas.saveLayer(null, layerPaint)
+        canvas.saveLayer(bounds, layerPaint)
     }
 
     private fun setBlend(paint: AndroidPaint, blend: BlendMode) {

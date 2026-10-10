@@ -2,6 +2,8 @@ package io.github.mhmmtbg.mobileillustrator.ui
 
 import io.github.mhmmtbg.mobileillustrator.model.tr
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -10,9 +12,12 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -66,17 +71,35 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
 
     // Karmaşık belgelerde kaydırma ve yakınlaştırma sırasında binlerce yolu her karede yeniden çizmek
     // yerine, arka planda hazırlanmış bir bit eşlem gösterilir; hareket bitince vektör çizime dönülür.
-    val backdrop = remember { DragBackdrop() }
+    val cacheScope = rememberCoroutineScope()
+    val scene = remember { SceneCache(cacheScope) }
     var raster by remember { mutableStateOf<RasterCache?>(null) }
     var gesturing by remember { mutableStateOf(false) }
-    val committed = vm.state.history.present
+    // Çizim iki katmandır: altta belge, üstte seçim kutusu, tutamaçlar ve kılavuzlar. Belge katmanı yalnızca
+    // belge ya da görünüm değişince yeniden çizilir; seçim, araç ya da panel değişiklikleri (kalabalık belgede
+    // pahalı olan) belge çizimini tetiklemez.
+    val documentState = remember(vm) { derivedStateOf(referentialEqualityPolicy()) { vm.state.document } }
+    val presentState = remember(vm) { derivedStateOf(referentialEqualityPolicy()) { vm.state.history.present } }
+    val previewing = remember(vm) { derivedStateOf { vm.state.preview != null } }
+    // Seçili nesnelerin üst düzey kimlikleri: kalabalık belgede bunlar ayrı çizilir.
+    val selectedTop = remember(vm) { derivedStateOf { SceneCache.topLevelOf(vm.state.history.present, vm.state.selection) } }
+
+    // Görünüm (kaydırma, yakınlaştırma) değişirken kalabalık belge keskin olarak yeniden çizilmez; hareket
+    // kısa bir süre durunca çizilir. Parmak, fare tekerleği ve el aracı için aynı kural geçerlidir.
+    var settledViewport by remember { mutableStateOf(vm.viewport) }
+    val liveViewport = vm.viewport
+    LaunchedEffect(liveViewport) {
+        delay(140)
+        settledViewport = liveViewport
+    }
+    val committed = presentState.value
     LaunchedEffect(committed) {
         raster = null
         delay(350)
         raster = withContext(Dispatchers.Default) { RasterCache.build(committed) }
     }
 
-    Canvas(
+    Box(
         modifier
             .semantics { contentDescription = tr("Tuval") }
             .onSizeChanged { vm.onCanvasSize(it.toSize()) }
@@ -147,42 +170,97 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                 }
             },
     ) {
-        val state = vm.state
+      Canvas(Modifier.fillMaxSize()) {
         val viewport = vm.viewport
-        val document = state.document
+        val document = documentState.value
 
         clipRect {
             drawRect(AppColors.Pasteboard)
-            val cached = raster?.takeIf { gesturing && it.document === document }
+            val unsettled = gesturing || viewport != settledViewport
+            val cached = raster?.takeIf { unsettled && it.document === document }
             val moving = vm.movingIds
-            val base = state.history.present
-            // Kalabalık belgede nesne sürüklerken: geri kalan her şey bir kez görüntüye çizilir, her karede
-            // yalnızca sürüklenen nesneler yeniden çizilir. Sürükleme boyunca bu nesneler en üstte görünür.
-            val still = if (moving.isNotEmpty() && state.preview != null && cached == null) {
-                backdrop.get(base, moving, viewport, size.width.toInt(), size.height.toInt())
+            val base = presentState.value
+            // Kalabalık belge her karede yeniden çizilmez (bkz. SceneCache): hazır görüntü gösterilir, üzerine
+            // yalnızca seçili ya da sürüklenen nesneler çizilir. Bu sırada o nesneler en üstte görünür; kesin
+            // görüntü arka planda hazırlanır ve hazır olunca yerine geçer.
+            val heavy = cached == null && base.layers.sumOf { it.children.size } >= SceneCache.HEAVY_NODE_COUNT
+            val dragging = heavy && moving.isNotEmpty() && previewing.value
+            val w = size.width.toInt()
+            val h = size.height.toInt()
+            scene.version // arka planda görüntü hazır olunca yeniden çiz
+            var image: androidx.compose.ui.graphics.ImageBitmap? = null
+            var stale: SceneCache.Entry? = null
+            var live: Set<String> = emptySet()
+            if (!heavy) {
+                scene.clear()
+            } else if (unsettled) {
+                // Görünüm hareket halinde: son kesin görüntü yeni görünüme göre ölçeklenip kaydırılır.
+                stale = scene.exact?.takeIf { it.document === document }
             } else {
-                backdrop.clear()
-                null
+                val selected = selectedTop.value
+                val exact = if (dragging) null else scene.exactFor(document, viewport, w, h)
+                val partial = if (exact == null) scene.partialFor(document, viewport, w, h) else null
+                val ghost = if (exact == null && partial == null && dragging) scene.exactFor(base, viewport, w, h) else null
+                val moved = if (exact == null && partial == null && ghost == null && !dragging) scene.exact?.takeIf { it.document === document } else null
+                when {
+                    exact != null -> {
+                        image = exact.image
+                        // Seçim üzerinde yapılacak işlemler için kısmi görüntü önceden hazırlanır.
+                        if (selected.isNotEmpty()) scene.request(document, selected, viewport, w, h)
+                    }
+                    partial != null -> {
+                        image = partial.image
+                        live = partial.skip
+                        if (!dragging) scene.request(document, emptySet(), viewport, w, h, delayMillis = 120)
+                    }
+                    ghost != null -> {
+                        // Kısmi görüntü henüz hazır değil: nesnenin eski yeri kısa bir süre görünür kalır.
+                        image = ghost.image
+                        live = moving
+                        scene.request(base, moving, viewport, w, h)
+                    }
+                    moved != null -> {
+                        // Görünüm yeni duruldu: keskin görüntü hazırlanana kadar eskisi ölçeklenerek gösterilir.
+                        stale = moved
+                        scene.request(document, emptySet(), viewport, w, h)
+                    }
+                    else -> {
+                        val entry = if (dragging) scene.renderNow(base, moving, viewport, w, h) else scene.renderNow(document, emptySet(), viewport, w, h)
+                        image = entry?.image
+                        if (entry != null && dragging) live = moving
+                    }
+                }
             }
             val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(size.width, size.height)))
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
-                if (still != null) canvas.drawImage(still, Offset.Zero, imagePaint)
+                stale?.let { scene.drawStale(canvas, it, viewport) }
+                image?.let { canvas.drawImage(it, Offset.Zero, imagePaint) }
                 canvas.save()
                 canvas.translate(viewport.offset.x, viewport.offset.y)
                 canvas.scale(viewport.scale, viewport.scale)
                 when {
                     cached != null -> cached.draw(canvas)
-                    still != null -> for (layer in document.layers) {
-                        if (!layer.visible) continue
-                        for (node in layer.children) if (node.id in moving) renderer.drawNode(native, node)
+                    image != null -> if (live.isNotEmpty()) {
+                        for (layer in document.layers) {
+                            if (!layer.visible) continue
+                            for (node in layer.children) if (node.id in live) renderer.drawNode(native, node)
+                        }
                     }
+                    stale != null -> {}
                     else -> renderer.draw(native, document, visible = visible)
                 }
                 canvas.restore()
             }
             for (ab in document.artboards) outline(ab.bounds, viewport, Color(0x66000000), 1.dp.toPx())
+        }
+      }
+      Canvas(Modifier.fillMaxSize()) {
+        val state = vm.state
+        val viewport = vm.viewport
+        val document = state.document
 
+        clipRect {
             val editing = vm.editedPath()
             if (state.tool == Tool.Direct && editing != null) {
                 val (node, world) = editing
@@ -257,6 +335,7 @@ fun CanvasView(vm: EditorViewModel, modifier: Modifier = Modifier) {
                 )
             }
         }
+      }
     }
 }
 
@@ -325,50 +404,5 @@ private class RasterCache(val document: Document, private val image: ImageBitmap
                 null // bellek yetmezse önbelleksiz devam
             }
         }
-    }
-}
-
-/** Sürükleme sırasında yerinde duran nesnelerin, ekran boyutunda bir kez çizilmiş görüntüsü. */
-private class DragBackdrop {
-    private var image: ImageBitmap? = null
-    private var base: Document? = null
-    private var ids: Set<String>? = null
-    private var viewport: Viewport? = null
-    private val renderer = DocumentRenderer()
-    private val clear = Paint().apply { color = AppColors.Pasteboard }
-
-    fun clear() {
-        if (image == null) return
-        image = null
-        base = null
-        ids = null
-    }
-
-    /** Hafif belgelerde `null` döner; onlarda her şeyi her karede çizmek zaten akıcıdır. */
-    fun get(base: Document, ids: Set<String>, viewport: Viewport, width: Int, height: Int): ImageBitmap? {
-        val have = image
-        if (have != null && this.base === base && this.ids === ids && this.viewport == viewport && have.width == width && have.height == height) return have
-        if (width <= 0 || height <= 0) return null
-        if (this.base !== base && base.layers.sumOf { it.children.size } < HEAVY) return null
-        return try {
-            val img = if (have != null && have.width == width && have.height == height) have else ImageBitmap(width, height)
-            val canvas = androidx.compose.ui.graphics.Canvas(img)
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), clear)
-            canvas.translate(viewport.offset.x, viewport.offset.y)
-            canvas.scale(viewport.scale, viewport.scale)
-            val visible = Rect.of(viewport.toDocument(Offset.Zero), viewport.toDocument(Offset(width.toFloat(), height.toFloat())))
-            renderer.draw(canvas.nativeCanvas, base, visible = visible, skip = ids)
-            image = img
-            this.base = base
-            this.ids = ids
-            this.viewport = viewport
-            img
-        } catch (e: Throwable) {
-            null
-        }
-    }
-
-    private companion object {
-        const val HEAVY = 300
     }
 }

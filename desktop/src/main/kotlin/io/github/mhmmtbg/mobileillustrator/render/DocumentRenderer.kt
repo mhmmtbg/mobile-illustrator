@@ -77,6 +77,8 @@ class DocumentRenderer {
         artboardColor: Int? = 0xFFFFFFFF.toInt(),
         visible: io.github.mhmmtbg.mobileillustrator.model.Rect? = null,
         skip: Set<String>? = null,
+        /** Arka plan çiziminde: `true` dönerse çizim yarıda bırakılır (sonuç artık gerekmiyordur). */
+        stop: (() -> Boolean)? = null,
     ) {
         if (artboardColor != null) {
             artboardPaint.color = artboardColor
@@ -94,11 +96,15 @@ class DocumentRenderer {
                 layerPaint.alpha = alphaOf(layer.opacity)
                 canvas.saveLayer(null, layerPaint)
             }
-            if (visible == null && skip == null) {
+            if (stop?.invoke() == true) {
+                // yarıda bırak
+            } else if (visible == null && skip == null) {
                 for (node in layer.children) drawNode(canvas, node)
             } else {
                 val index = if (visible != null) DocIndex.of(document) else null
+                var count = 0
                 for (node in layer.children) {
+                    if (stop != null && (count++ and 63) == 0 && stop()) break
                     if (skip != null && node.id in skip) continue
                     if (index != null && visible != null) {
                         val box = index.painted(node) ?: continue
@@ -118,8 +124,14 @@ class DocumentRenderer {
         if (!node.transform.isIdentity) canvas.concat(toSkia(node.transform))
         when (node) {
             is GroupNode -> {
-                node.clip?.let { canvas.clipPath(buildClip(it), ClipMode.INTERSECT, true) }
-                if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) saveBlendLayer(canvas, node.opacity, node.blendMode)
+                var layerBounds: SkiaRect? = null
+                node.clip?.let {
+                    val clip = buildClip(it)
+                    canvas.clipPath(clip, ClipMode.INTERSECT, true)
+                    // Kırpılmış grubun ara katmanı kırpma alanından büyük olamaz.
+                    layerBounds = clip.bounds
+                }
+                if (node.opacity < 1.0 || node.blendMode != BlendMode.Normal) saveBlendLayer(canvas, node.opacity, node.blendMode, layerBounds)
                 for (child in node.children) drawNode(canvas, child)
             }
             is PathNode -> drawPath(canvas, node)
@@ -140,7 +152,10 @@ class DocumentRenderer {
         var alpha = node.opacity
         var blend = node.blendMode
         if (fill != null && stroke != null && (alpha < 1.0 || blend != BlendMode.Normal)) {
-            saveBlendLayer(canvas, alpha, blend)
+            // Ara katman yalnızca nesnenin kapladığı alan kadar açılır. Sınırsız katman tüm tuval boyutunda
+            // bellek ayırır; binlerce yarı saydam nesnede çizimi on kat yavaşlatır.
+            val pad = (stroke.width / 2 * maxOf(1.0, stroke.miterLimit)).toFloat() + 1f
+            saveBlendLayer(canvas, alpha, blend, path.bounds.inflate(pad))
             alpha = 1.0
             blend = BlendMode.Normal
         }
@@ -157,10 +172,10 @@ class DocumentRenderer {
     }
 
     /** Opaklığı ve karışım modunu içeriğin tamamına birden uygulamak için ara katman açar. */
-    private fun saveBlendLayer(canvas: Canvas, opacity: Double, blend: BlendMode) {
+    private fun saveBlendLayer(canvas: Canvas, opacity: Double, blend: BlendMode, bounds: SkiaRect? = null) {
         layerPaint.alpha = alphaOf(opacity)
         layerPaint.blendMode = toSkia(blend)
-        canvas.saveLayer(null, layerPaint)
+        canvas.saveLayer(bounds, layerPaint)
     }
 
     private fun toSkia(blend: BlendMode): SkiaBlendMode = when (blend) {

@@ -148,6 +148,9 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                     if (state.layersOpen && !wide) {
                         LayersPanel(vm, Modifier.align(Alignment.TopEnd).fillMaxHeight().widthIn(max = 340.dp).fillMaxWidth(0.88f))
                     }
+                    // Seçime göre değişen eylemler tuvalin alt kenarının üzerinde durur; belirip kaybolmaları
+                    // tuvalin boyutunu (dolayısıyla görünümü) değiştirmez.
+                    ContextBar(vm, Modifier.align(Alignment.BottomCenter), onRename = { renaming = it }, onTransform = { showTransform = true })
                     state.busy?.let { BusyOverlay(it) }
                     state.message?.let { msg ->
                         LaunchedEffect(msg) {
@@ -157,7 +160,7 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                         Text(
                             msg,
                             Modifier
-                                .align(Alignment.BottomCenter)
+                                .align(Alignment.TopCenter)
                                 .padding(12.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0xF0111113))
@@ -170,7 +173,6 @@ fun EditorScreen(vm: EditorViewModel, host: PlatformHost) {
                 if (state.layersOpen && wide) LayersPanel(vm, Modifier.fillMaxHeight().width(340.dp))
             }
             HorizontalDivider(color = AppColors.Divider)
-            ContextBar(vm, onRename = { renaming = it }, onTransform = { showTransform = true })
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -345,7 +347,7 @@ internal fun BarButton(icon: ImageVector, label: String, enabled: Boolean = true
 
 /** Seçime ya da etkin araca göre değişen eylemler. Yapılacak bir şey yoksa yer kaplamaz. */
 @Composable
-private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransform: () -> Unit) {
+private fun ContextBar(vm: EditorViewModel, modifier: Modifier, onRename: (String) -> Unit, onTransform: () -> Unit) {
     val state = vm.state
     val actions = ArrayList<Pair<String, () -> Unit>>()
     // Alt menüler: "Hizala" ve "Şekil" eylemleri aynı satırda açılır.
@@ -406,14 +408,23 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransf
             actions += tr("En arkaya") to { vm.reorderSelection(ZMove.Back) }
             actions += tr("Katmanda göster") to vm::revealSelectionInLayers
             if (single != null) actions += tr("Adlandır") to { onRename(single.id) }
-            actions += tr("Sil") to vm::deleteSelection
         }
     }
     if (actions.isEmpty()) return
+    // Silme düğmesi satırın sonunda sabit durur: eylemler kaydırılsa da her zaman görünür.
+    val canDelete = state.selection.isNotEmpty() && state.pen == null && !(state.tool == Tool.Direct && edit?.anchor != null)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(AppColors.Panel.copy(alpha = 0.94f))
+            // Çubuğa dokunuş alttaki tuvale geçmesin.
+            .clickable(interactionSource = null, indication = null) {}
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
     Row(
         Modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .weight(1f)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -427,11 +438,20 @@ private fun ContextBar(vm: EditorViewModel, onRename: (String) -> Unit, onTransf
                     .background(AppColors.PanelRaised)
                     .clickable(role = Role.Button, onClick = action)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
-                color = if (label == tr("Sil") || label == tr("Düğümü sil")) Color(0xFFFF8A8A) else AppColors.OnPanel,
+                color = if (label == tr("Düğümü sil")) Color(0xFFFF8A8A) else AppColors.OnPanel,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
             )
         }
+    }
+    if (canDelete) {
+        IconButton(
+            onClick = vm::deleteSelection,
+            modifier = Modifier.padding(end = 4.dp).semantics { contentDescription = tr("Sil") },
+        ) {
+            Icon(AppIcons.Delete, contentDescription = null, tint = Color(0xFFFF8A8A))
+        }
+    }
     }
 }
 
