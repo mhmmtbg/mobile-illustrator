@@ -510,7 +510,8 @@ object AiExporter {
             val shapes = node.outline
             // Gerçek PDF metni yalnızca standart fontla, tek satır ve sola hizalı metinde yazılabilir; diğerlerinde
             // (çok satır, hizalama, yüklenmiş font) görünümün bozulmaması için harfler yol olarak yazılır.
-            val plain = node.text.indexOf('\n') < 0 && node.align == TextAlign.Start && !node.fontFamily.startsWith("font:")
+            val plain = node.text.indexOf('\n') < 0 && node.align == TextAlign.Start && !node.fontFamily.startsWith("font:") &&
+                node.tracking == 0.0
             val warp = node.warp
             val encoded = if (opt.outlineAllText || shapes != null || !plain || warp != null) null else encode(node.text)
             // Metnin özellikleri ayrıca saklanır: bu uygulama dosyayı geri açtığında metin düzenlenebilir kalır.
@@ -520,6 +521,7 @@ object AiExporter {
                 .append(" /A /").append(node.align.name).append(" /LH ").append(n6(node.lineHeight))
             // Eğme: biçim ve miktar saklanır; görünen içerik bükülmüş harf biçimleridir.
             if (warp != null) sb.append(" /W /").append(warp.style.name).append(" /WB ").append(n6(warp.bend))
+            if (node.tracking != 0.0) sb.append(" /TR ").append(n6(node.tracking))
             sb.append(" /M [").append(mat(node.transform)).append("] >> BDC\n")
             sb.append("q\n")
             if (!node.transform.isIdentity) sb.append(cm(node.transform)).append('\n')

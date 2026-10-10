@@ -63,6 +63,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.mhmmtbg.mobileillustrator.editor.TextPrompt
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.material3.Icon
+import androidx.compose.ui.platform.LocalDensity
 import io.github.mhmmtbg.mobileillustrator.editor.BundledFonts
 import io.github.mhmmtbg.mobileillustrator.model.Document
 import io.github.mhmmtbg.mobileillustrator.model.Layer
@@ -246,6 +251,8 @@ fun TextDialog(
     val sizeValue = size.replace(',', '.').toDoubleOrNull()
     val leadingValue = leading.replace(',', '.').toDoubleOrNull()
     val keys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+    var spacing by remember { mutableStateOf(prompt.tracking.let { if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString() }) }
+    val spacingValue = spacing.replace(',', '.').trim().ifEmpty { "0" }.toDoubleOrNull()
     var fontMenu by remember { mutableStateOf(false) }
     if (fontMenu) {
         FontPickerDialog(
@@ -255,64 +262,100 @@ fun TextDialog(
             onPick = { fontMenu = false; family = it },
         )
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (prompt.nodeId == null) tr("Metin ekle") else tr("Metni düzenle")) },
-        text = {
-            // Yükseklik sınırlı: klavye açıkken Tamam/Vazgeç düğmeleri klavyenin arkasında kalmamalı.
-            Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(tr("Metin")) }, minLines = 2, maxLines = 6)
-                // Font: metnin hemen altında; dokununca her adın kendi fontuyla yazıldığı liste açılır.
-                val all = fontChoices(systemFonts, fonts, family)
-                val current = all.firstOrNull { it.second == family }?.first ?: family
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(AppColors.PanelRaised)
-                        .clickable(role = Role.DropdownList) { fontMenu = true }
-                        .semantics { contentDescription = tr("Font seç") }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(tr("Font"), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.width(10.dp))
-                    FontSample(current, family, selected = false, Modifier.weight(1f).height(26.dp))
-                    Text("▾", color = AppColors.OnPanelMuted)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(size, { size = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Boyut")) }, keyboardOptions = keys)
-                    OutlinedTextField(leading, { leading = it }, Modifier.weight(1f), singleLine = true, label = { Text(tr("Satır aralığı")) }, keyboardOptions = keys)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { bold = !bold }) {
-                        Checkbox(bold, null)
-                        Text(tr("Kalın"))
+    // Ekranın tamamı ölçülür: pencere klavyenin üstünde kalan alana sığmalıdır.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val insets = WindowInsets.safeDrawing
+        val density = LocalDensity.current
+        val taken = with(density) { (insets.getTop(density) + insets.getBottom(density)).toDp() }
+        // Başlık, düğmeler ve pencere kenar boşlukları için ayrılan pay.
+        val maxContent = (maxHeight - taken - 260.dp).coerceIn(220.dp, 640.dp)
+        val narrow = maxWidth < 480.dp
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(if (prompt.nodeId == null) tr("Metin ekle") else tr("Metni düzenle")) },
+            text = {
+                // Yükseklik sınırlı: klavye açıkken Tamam/Vazgeç düğmeleri klavyenin arkasında kalmamalı. Sınır ekranın
+                // klavyeden arta kalan yüksekliğine göre belirlenir; geniş ekranda her şey kaydırmadan sığar.
+                Column(Modifier.heightIn(max = maxContent).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(tr("Metin")) }, minLines = 2, maxLines = 5)
+                    // Font: metnin hemen altında; dokununca her adın kendi fontuyla yazıldığı liste açılır.
+                    val all = fontChoices(systemFonts, fonts, family)
+                    val current = all.firstOrNull { it.second == family }?.first ?: family
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AppColors.PanelRaised)
+                            .clickable(role = Role.DropdownList) { fontMenu = true }
+                            .semantics { contentDescription = tr("Font seç") }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(tr("Font"), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.width(10.dp))
+                        FontSample(current, family, selected = false, Modifier.weight(1f).height(26.dp))
+                        Text("▾", color = AppColors.OnPanelMuted)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { italic = !italic }) {
-                        Checkbox(italic, null)
-                        Text(tr("Eğik"))
+                    // Boyut, satır aralığı ve harf aralığı tek satırda; dar ekranda etiketler kısalır.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        @Composable
+                        fun field(value: String, full: String, short: String, options: KeyboardOptions, onChange: (String) -> Unit) = OutlinedTextField(
+                            value, onChange, Modifier.weight(1f).semantics { contentDescription = full }, singleLine = true,
+                            label = { Text(if (narrow) short else full, maxLines = 1, softWrap = false) }, keyboardOptions = options,
+                        )
+                        field(size, tr("Boyut"), tr("Boyut"), keys) { size = it }
+                        field(leading, tr("Satır aralığı"), tr("Satır"), keys) { leading = it }
+                        // Harf aralığı font boyutunun binde biri cinsindendir; eksi değer harfleri sıkıştırır.
+                        field(spacing, tr("Harf aralığı"), tr("Harf"), KeyboardOptions(keyboardType = KeyboardType.Number)) { spacing = it }
+                    }
+                    // Kalın, eğik ve hizalama aynı satırda.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { bold = !bold }) {
+                            Checkbox(bold, null)
+                            Text(tr("Kalın"))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Checkbox) { italic = !italic }) {
+                            Checkbox(italic, null)
+                            Text(tr("Eğik"))
+                        }
+                        Spacer(Modifier.weight(1f))
+                        val aligns = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries
+                        val alignIcons = listOf(AppIcons.TextLeft to tr("Sola"), AppIcons.TextCenter to tr("Ortala"), AppIcons.TextRight to tr("Sağa"))
+                        alignIcons.forEachIndexed { i, (icon, label) ->
+                            val on = align == aligns[i]
+                            Box(
+                                Modifier
+                                    .padding(start = 4.dp)
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (on) AppColors.Accent else AppColors.PanelRaised)
+                                    .clickable(role = Role.RadioButton) { align = aligns[i] }
+                                    .semantics { contentDescription = label; selected = on },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(icon, null, Modifier.size(20.dp), tint = if (on) Color(0xFF2B1A0E) else AppColors.OnPanel)
+                            }
+                        }
                     }
                 }
-                val aligns = io.github.mhmmtbg.mobileillustrator.model.TextAlign.entries
-                ChoiceRow(tr("Hizalama"), listOf(tr("Sola") to (align == aligns[0]), tr("Ortala") to (align == aligns[1]), tr("Sağa") to (align == aligns[2]))) { align = aligns[it] }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onConfirm(
-                        prompt.copy(
-                            text = text, fontSize = sizeValue ?: prompt.fontSize, fontFamily = family, bold = bold, italic = italic,
-                            align = align, lineHeight = leadingValue ?: prompt.lineHeight,
-                        ),
-                    )
-                },
-                enabled = text.isNotBlank() && sizeValue != null && sizeValue > 0 && leadingValue != null && leadingValue > 0,
-            ) { Text(tr("Tamam")) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
-    )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onConfirm(
+                            prompt.copy(
+                                text = text, fontSize = sizeValue ?: prompt.fontSize, fontFamily = family, bold = bold, italic = italic,
+                                align = align, lineHeight = leadingValue ?: prompt.lineHeight, tracking = spacingValue ?: prompt.tracking,
+                            ),
+                        )
+                    },
+                    enabled = text.isNotBlank() && sizeValue != null && sizeValue > 0 && leadingValue != null && leadingValue > 0 && spacingValue != null,
+                ) { Text(tr("Tamam")) }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Vazgeç")) } },
+        )
+    }
 }
 
 @Composable

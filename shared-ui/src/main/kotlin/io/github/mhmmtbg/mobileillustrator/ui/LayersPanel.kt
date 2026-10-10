@@ -41,6 +41,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.model.GroupNode
+import io.github.mhmmtbg.mobileillustrator.model.colorGroups
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import io.github.mhmmtbg.mobileillustrator.model.ImageNode
 import io.github.mhmmtbg.mobileillustrator.model.Layer
 import io.github.mhmmtbg.mobileillustrator.model.Node
@@ -79,14 +82,21 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
     }
 
     Column(modifier.background(AppColors.Panel).semantics { contentDescription = tr("Katman paneli") }) {
-        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Katmanlar"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = AppColors.OnPanel, maxLines = 1)
-            // Çoklu seçim: açıkken satırlara dokunmak seçime ekler; seçilenler kopyalanıp başka belgeye yapıştırılabilir.
-            BarButton(AppIcons.MultiSelect, tr("Çoklu seçim"), active = state.multiSelect, onClick = vm::toggleMultiSelect)
-            BarButton(AppIcons.Copy, tr("Seçimi kopyala"), enabled = state.selection.isNotEmpty() || state.layerSelection.isNotEmpty()) { vm.copySelection() }
-            BarButton(AppIcons.Paste, tr("Panodan yapıştır"), enabled = vm.canPaste, onClick = vm::paste)
-            BarButton(AppIcons.Add, tr("Katman ekle"), onClick = vm::addLayer)
-            BarButton(AppIcons.Close, tr("Paneli kapat"), onClick = vm::toggleLayersPanel)
+        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (state.colorView) tr("Renkler") else tr("Katmanlar"), Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall, color = AppColors.OnPanel, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            // Renklere göre gruplama: liste katmanlar yerine belgedeki renkleri gösterir.
+            HeaderButton(AppIcons.Palette, tr("Renklere göre grupla"), active = state.colorView, onClick = vm::toggleColorView)
+            if (!state.colorView) {
+                // Çoklu seçim: açıkken satırlara dokunmak seçime ekler; seçilenler kopyalanıp başka belgeye yapıştırılabilir.
+                HeaderButton(AppIcons.MultiSelect, tr("Çoklu seçim"), active = state.multiSelect, onClick = vm::toggleMultiSelect)
+                HeaderButton(AppIcons.Copy, tr("Seçimi kopyala"), enabled = state.selection.isNotEmpty() || state.layerSelection.isNotEmpty()) { vm.copySelection() }
+                HeaderButton(AppIcons.Paste, tr("Panodan yapıştır"), enabled = vm.canPaste, onClick = vm::paste)
+                HeaderButton(AppIcons.Add, tr("Katman ekle"), onClick = vm::addLayer)
+            }
+            HeaderButton(AppIcons.Close, tr("Paneli kapat"), onClick = vm::toggleLayersPanel)
         }
         HorizontalDivider(color = AppColors.Divider)
         // Tuvalde seçilen nesne listede görünür olsun: kapalı bir grubun içindeyse açılır, satır ekran dışındaysa
@@ -102,7 +112,9 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
                 listState.animateScrollToItem(maxOf(0, index - 2))
             }
         }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
+        if (state.colorView) {
+            ColorList(vm, Modifier.fillMaxWidth().weight(1f))
+        } else LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
             items(rows, key = { it.key }) { row ->
                 when (row) {
                     is PanelRow.OfLayer -> LayerRow(vm, row, onRename = { renaming = row.layer.id })
@@ -115,6 +127,74 @@ fun LayersPanel(vm: EditorViewModel, modifier: Modifier = Modifier) {
     renaming?.let { id ->
         val layer = doc.layers.firstOrNull { it.id == id }
         if (layer == null) renaming = null else NameDialog(tr("Katmanı adlandır"), layer.name, onDismiss = { renaming = null }) { renaming = null; vm.renameLayer(id, it) }
+    }
+}
+
+/** Panel başlığındaki düğme; dar panelde de sığsın diye üst çubuktakilerden biraz küçüktür. */
+@Composable
+private fun HeaderButton(icon: ImageVector, label: String, enabled: Boolean = true, active: Boolean = false, onClick: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(CircleShape).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label; selected = active },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, null, Modifier.size(22.dp),
+            tint = when {
+                !enabled -> AppColors.OnPanelMuted.copy(alpha = 0.4f)
+                active -> AppColors.Accent
+                else -> AppColors.OnPanel
+            },
+        )
+    }
+}
+
+/**
+ * Renklere göre gruplama: belgedeki her renk, onu kullanan nesnelerin sayısıyla bir satırdır. Satıra dokunmak o
+ * renkteki nesneleri seçer; kalem düğmesi rengi kullanıldığı her yerde tek seferde değiştirir.
+ */
+@Composable
+private fun ColorList(vm: EditorViewModel, modifier: Modifier) {
+    val state = vm.state
+    // Sürükleme önizlemesinde değil, yalnızca belge gerçekten değişince yeniden hesaplanır.
+    val doc = state.history.present
+    val groups = remember(doc) { doc.colorGroups() }
+    var editing by remember { mutableStateOf<Int?>(null) }
+    if (groups.isEmpty()) {
+        Box(modifier.padding(20.dp), contentAlignment = Alignment.TopCenter) {
+            Text(tr("Belgede renkli nesne yok"), color = AppColors.OnPanelMuted, style = MaterialTheme.typography.bodySmall)
+        }
+    } else {
+        LazyColumn(modifier) {
+            items(groups, key = { it.rgb }) { group ->
+                val code = "#%06X".format(group.rgb)
+                val chosen = state.selection.isNotEmpty() && state.selection.size <= group.nodeIds.size && group.nodeIds.containsAll(state.selection)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .background(if (chosen) AppColors.Selection.copy(alpha = 0.22f) else Color.Transparent)
+                        .clickable(role = Role.Button) { vm.selectColor(group.rgb) }
+                        .semantics(mergeDescendants = true) { contentDescription = tr("%s rengi, %s nesne", code, group.nodeIds.size); selected = chosen }
+                        .padding(start = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ColorDot(group.color, Modifier.size(28.dp))
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Text(code, color = AppColors.OnPanel, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                        Text(
+                            tr("%s nesne", group.nodeIds.size) + " · " + tr("%s dolgu, %s kontur", group.fills, group.strokes),
+                            color = AppColors.OnPanelMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    HeaderButton(AppIcons.Pencil, tr("%s rengini değiştir", code)) { editing = group.rgb }
+                }
+            }
+        }
+    }
+    editing?.let { rgb ->
+        val group = groups.firstOrNull { it.rgb == rgb }
+        if (group == null) editing = null else ColorPickerDialog(group.color, onDismiss = { editing = null }) { editing = null; vm.recolor(rgb, it) }
     }
 }
 

@@ -287,14 +287,31 @@ class DocumentRenderer {
             textPaint.mode = PaintMode.FILL
             textPaint.pathEffect = null
             applyPaint(textPaint, fill, node.opacity)
-            forEachLine(node, font) { line, x, y -> canvas.drawString(line, x, y, font, textPaint) }
+            forEachLine(node, font) { line, x, y -> drawLine(canvas, node, font, line, x, y) }
         }
         if (stroke != null) {
             applyStroke(textPaint, stroke, node.opacity)
             textPaint.mode = PaintMode.STROKE
-            forEachLine(node, font) { line, x, y -> canvas.drawString(line, x, y, font, textPaint) }
+            forEachLine(node, font) { line, x, y -> drawLine(canvas, node, font, line, x, y) }
             textPaint.pathEffect = null
         }
+    }
+
+    /** Bir satırı çizer; harf aralığı varsa harfler tek tek yerleştirilir. */
+    private fun drawLine(canvas: Canvas, node: TextNode, font: Font, line: String, x: Float, y: Float) {
+        val extra = letterGap(node)
+        if (extra == 0f) {
+            canvas.drawString(line, x, y, font, textPaint)
+            return
+        }
+        val glyphs = font.getStringGlyphs(line)
+        if (glyphs.isEmpty()) return
+        val widths = font.getWidths(glyphs)
+        val xs = FloatArray(glyphs.size)
+        // Aralık her harfin iki yanına eşit paylaştırılır (Android'in çizimiyle aynı).
+        var pen = extra / 2
+        for (i in glyphs.indices) { xs[i] = pen; pen += widths[i] + extra }
+        org.jetbrains.skia.TextBlob.makeFromPosH(glyphs, xs, 0f, font)?.let { canvas.drawTextBlob(it, x, y, textPaint) }
     }
 
     private fun applyStroke(target: SkiaPaint, stroke: Stroke, alpha: Double) {
@@ -473,10 +490,19 @@ class DocumentRenderer {
             }
             val want = node.measuredWidth
             if (want != null && want > 0.0 && node.text.isNotBlank() && node.text.indexOf('\n') < 0) {
-                val have = font.measureTextWidth(node.text)
+                val have = font.measureTextWidth(node.text) + letterGap(node) * node.text.length
                 if (have > 0f) font.scaleX = (want / have).toFloat().coerceIn(0.5f, 2f)
             }
             return font
+        }
+
+        /** Harfler arasına eklenen boşluk (yerel birim). */
+        fun letterGap(node: TextNode): Float = (node.tracking / 1000.0 * node.fontSize).toFloat()
+
+        /** Satırın harf aralığı dahil genişliği. */
+        fun lineWidth(node: TextNode, font: Font, line: String): Float {
+            val extra = letterGap(node)
+            return font.measureTextWidth(line) + if (extra == 0f) 0f else extra * font.getStringGlyphs(line).size
         }
 
         /**
@@ -492,7 +518,7 @@ class DocumentRenderer {
             val step = (node.fontSize * node.lineHeight).toFloat()
             var y = 0f
             for (line in node.text.split('\n')) {
-                val x = if (start) 0f else font.measureTextWidth(line).let { if (node.align == TextAlign.Center) -it / 2 else -it }
+                val x = if (start) 0f else lineWidth(node, font, line).let { if (node.align == TextAlign.Center) -it / 2 else -it }
                 action(line, x, y)
                 y += step
             }

@@ -54,6 +54,8 @@ import io.github.mhmmtbg.mobileillustrator.model.clip
 import io.github.mhmmtbg.mobileillustrator.model.paste
 import io.github.mhmmtbg.mobileillustrator.model.merged
 import io.github.mhmmtbg.mobileillustrator.model.lockedNodesIn
+import io.github.mhmmtbg.mobileillustrator.model.colorGroups
+import io.github.mhmmtbg.mobileillustrator.model.recolored
 import io.github.mhmmtbg.mobileillustrator.model.deleteAnchor
 import io.github.mhmmtbg.mobileillustrator.model.duplicate
 import io.github.mhmmtbg.mobileillustrator.model.findLayer
@@ -1222,6 +1224,38 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         }
     }
 
+    // ---- Renklere göre gruplama ----------------------------------------------
+
+    /** Katman panelini katman listesi ile renk listesi arasında değiştirir. */
+    fun toggleColorView() {
+        state = state.copy(colorView = !state.colorView, layersOpen = true)
+    }
+
+    /** Bir rengi kullanan (görünür, kilitsiz) bütün nesneleri seçer. */
+    fun selectColor(rgb: Int) {
+        val group = present.colorGroups().firstOrNull { it.rgb == rgb } ?: return
+        if (state.pen != null) finishPen()
+        val hidden = HashSet<String>()
+        fun walk(nodes: List<Node>, off: Boolean) {
+            for (n in nodes) {
+                val h = off || !n.visible
+                if (h) hidden += n.id
+                if (n is GroupNode) walk(n.children, h)
+            }
+        }
+        for (l in present.layers) walk(l.children, !l.visible)
+        val ids = group.nodeIds.filterTo(HashSet()) { it !in hidden }
+        state = state.withSelection(ids).copy(nodeEdit = null, tool = Tool.Select)
+        present.boundsOf(ids)?.let(::bringIntoView)
+    }
+
+    /** Bir rengi, kullanıldığı her yerde (dolgu, kontur, gradyan durağı) tek seferde değiştirir. */
+    fun recolor(rgb: Int, to: Rgba) {
+        val count = present.colorGroups().firstOrNull { it.rgb == rgb }?.nodeIds?.size ?: return
+        onDragCancel()
+        commit(present.recolored(rgb, to)) { it.copy(message = tr("%s nesnenin rengi değişti", count)) }
+    }
+
     // ---- Pano: kopyala, kes, yapıştır (belgeler arasında da) -------------------
 
     private var clipboard: Clip? = null
@@ -1331,7 +1365,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     fun editSelectedText() {
         val id = state.selection.singleOrNull() ?: return
         val t = present.findNode(id) as? TextNode ?: return
-        state = state.copy(textPrompt = TextPrompt(t.id, Vec2.Zero, t.text, t.fontSize, t.fontFamily, t.bold, t.italic, t.align, t.lineHeight))
+        state = state.copy(textPrompt = TextPrompt(t.id, Vec2.Zero, t.text, t.fontSize, t.fontFamily, t.bold, t.italic, t.align, t.lineHeight, t.tracking))
     }
 
     /** Seçili metni yola çevirir (Illustrator'daki "Anahat Oluştur"); artık düğümleriyle düzenlenebilir. */
@@ -1390,11 +1424,13 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         val title = text.substringBefore('\n').take(24)
         val leading = prompt.lineHeight.coerceIn(0.5, 5.0)
         val size = prompt.fontSize.coerceIn(1.0, 5000.0)
+        val tracking = prompt.tracking.coerceIn(-500.0, 5000.0)
         if (prompt.nodeId != null) {
             commit(
                 present.updateNode(prompt.nodeId) { n ->
                     (n as? TextNode)?.copy(
                         text = text, name = title, fontSize = size, fontFamily = prompt.fontFamily, align = prompt.align, lineHeight = leading,
+                        tracking = tracking,
                         // Metin değişti: özgün fontun harf biçimleri artık geçerli değil, cihaz fontuna geçilir.
                         bold = prompt.bold, italic = prompt.italic, measuredWidth = null, outline = null,
                     ) ?: n
@@ -1408,7 +1444,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
         }
         val node = TextNode(
             name = title, text = text, fontSize = size, fontFamily = prompt.fontFamily, bold = prompt.bold, italic = prompt.italic,
-            align = prompt.align, lineHeight = leading,
+            align = prompt.align, lineHeight = leading, tracking = tracking,
             fill = Paint.Solid(state.fill ?: Rgba.Black), transform = Matrix.translate(prompt.position.x, prompt.position.y),
             opacity = state.opacity,
         )
@@ -1450,7 +1486,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
             persistLater(old)
         }
         state = freshState(doc, session).copy(
-            warnings = warnings, layersOpen = old.layersOpen, snapping = old.snapping, multiSelect = old.multiSelect,
+            warnings = warnings, layersOpen = old.layersOpen, snapping = old.snapping, multiSelect = old.multiSelect, colorView = old.colorView,
             busy = old.busy, crashReport = old.crashReport,
         )
         tabOrder = if (replace) tabOrder.map { if (it == old.session.id) session.id else it } else tabOrder + session.id
@@ -1483,7 +1519,7 @@ class EditorViewModel(private val io: DocumentIo, private val scope: CoroutineSc
     /** Arka sekmedeki belgeyi öne getirir; önceki belgenin araç ve panel ayarları korunur. */
     private fun show(target: Parked, from: EditorState) {
         state = target.state.copy(
-            layersOpen = from.layersOpen, snapping = from.snapping, multiSelect = from.multiSelect, busy = from.busy,
+            layersOpen = from.layersOpen, snapping = from.snapping, multiSelect = from.multiSelect, colorView = from.colorView, busy = from.busy,
             crashReport = from.crashReport, layerSelection = if (from.multiSelect) target.state.layerSelection else emptySet(),
         )
         viewport = target.viewport

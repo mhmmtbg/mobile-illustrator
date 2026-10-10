@@ -84,6 +84,8 @@ data class TextPrompt(
     val italic: Boolean = false,
     val align: TextAlign = TextAlign.Start,
     val lineHeight: Double = 1.2,
+    /** Harf aralığı (font boyutunun binde biri). */
+    val tracking: Double = 0.0,
 )
 
 /** Vektöre çevirmenin hazır ayarları. [detail]: görselin izlenmeden önce küçültüleceği uzun kenar (piksel). */
@@ -167,6 +169,8 @@ data class EditorState(
     val multiSelect: Boolean = false,
     /** Katman panelinde bütün olarak seçilmiş katmanlar (kopyalanırken katman olarak alınırlar). */
     val layerSelection: Set<String> = emptySet(),
+    /** Katman paneli katmanlar yerine belgedeki renkleri gösteriyor. */
+    val colorView: Boolean = false,
 ) {
     val document: Document get() = preview ?: history.present
 }

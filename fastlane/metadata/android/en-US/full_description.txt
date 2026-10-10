@@ -21,7 +21,8 @@ COLOUR AND TEXT
 • Solid colours, linear and radial gradients, opacity; blend modes in a file are kept
 • Stroke width, caps and joins, dashed lines
 • Colour wheel and colour codes; CMYK colour picking for print; CMYK and spot colours in a file keep their values
-• Multi-line text, alignment, line spacing; font list with previews, 40 bundled fonts, or load your own .ttf/.otf; convert text to outlines
+• Group by colour: change the colour of every object that uses it in one place
+• Multi-line text, alignment, line and letter spacing; font list with previews, 40 bundled fonts, or load your own .ttf/.otf; convert text to outlines
 • Text warp: arc, arch, wave, bulge, rise
 
 TABLET AND PHONE

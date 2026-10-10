@@ -39,6 +39,9 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 **Katmanlar**
 - Dosyadaki katmanlar adları ve görünürlükleriyle gelir; çalışma yüzeyleri korunur. Katman kilitleri bu uygulamanın
   kaydettiği dosyalarda korunur (başka programların PDF'lerindeki "kilitli" işareti düzenleme kilidi değildir, yok sayılır).
+- Renklere göre gruplama: paneldeki palet düğmesi listeyi belgedeki renklere çevirir. Her renk, onu kullanan nesne
+  sayısıyla bir satırdır; satıra dokunmak o renkteki nesneleri seçer, kalem düğmesi rengi kullanıldığı her yerde
+  (dolgu, kontur, gradyan durağı) tek seferde değiştirir. Kilitli katman ve nesnelere dokunulmaz.
 - Çoklu seçim: paneldeki çoklu seçim düğmesi açıkken satırlara dokunmak nesneleri ve bütün katmanları seçime ekler;
   seçilenler kopyalanır, başka belgeye yapıştırılır ya da silinir.
 - Katman ekle, sil, yeniden adlandır, sırala, gizle, kilitle; nesneleri katmanlar arasında taşı.
@@ -55,7 +58,7 @@ yüklenir ve PNG olarak dışa aktarılır. Ekran görüntüleri aynı Release s
 - Şekil işlemleri: birleştir, öndekini çıkar, kesiştir, dışla. Kırpma maskesi yap/bırak.
 - Dolgu ve kontur: düz renk, doğrusal/dairesel gradyan (duraklar ve açı), opaklık; kontur kalınlığı, uç, köşe, kesikli çizgi.
 - Renk seçici: renk tekerleği ve parlaklık, renk kodu (#RRGGBB) ve R/G/B değerleri; baskı için CMYK modu.
-- Metin: çok satır, hizalama, satır aralığı, kalın/eğik; font listesinde her ad kendi fontuyla yazılır. Cihazın
+- Metin: çok satır, hizalama, satır aralığı, harf aralığı (font boyutunun binde biri; eksi değer sıkıştırır), kalın/eğik; font listesinde her ad kendi fontuyla yazılır. Cihazın
   fontlarına ek olarak uygulamayla 40 açık lisanslı font gelir (hepsi Türkçe harfleri içerir; lisans metinleri
   `app/src/main/assets/fonts/licenses` klasöründe), kendi `.ttf`/`.otf` dosyanı da yükleyebilirsin; yola çevirme.
 - Metin eğme: yay, kemer, dalga, şişkin, yükselen. Metin düzenlenebilir kalır; eğim alt çubuktaki sürgüyle,

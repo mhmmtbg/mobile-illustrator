@@ -19,6 +19,15 @@ class SvgTest {
     private fun rgb(p: Paint?) = (p as Paint.Solid).color.toArgb() and 0xFFFFFF
 
     @Test
+    fun letterSpacingIsWrittenAndReadBack() {
+        val doc = SvgImporter.import("""<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text x="10" y="50" font-size="20" letter-spacing="5">AB</text></svg>""".toByteArray(), "t").document
+        val t = doc.layers.flatMap { it.children }.single() as TextNode
+        near(250.0, t.tracking)
+        val svg = SvgExporter.export(doc)
+        assertTrue("letter-spacing=\"5\"" in svg, svg)
+    }
+
+    @Test
     fun pathCommandsRelativeImplicitAndSmooth() {
         val sp = SvgPathParser.parse("M10 10 20 10l0,10h-10z m30,0 c0,10 10,10 10,0 s10-10 10,0")
         assertEquals(2, sp.size)

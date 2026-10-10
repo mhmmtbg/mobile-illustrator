@@ -521,6 +521,9 @@ object SvgImporter {
                 stroke = stroke(st, null),
                 transform = Matrix.translate((x ?: 0.0) + shift, y ?: 0.0),
                 measuredWidth = e.getAttribute("textLength").takeIf { it.isNotEmpty() }?.let { length(it, viewW) }?.takeIf { it > 0 },
+                // Harf aralığı kullanıcı biriminde gelir; font boyutunun binde birine çevrilir.
+                tracking = e.getAttribute("letter-spacing").trim().removeSuffix("px").toDoubleOrNull()
+                    ?.takeIf { st.fontSize > 0 }?.let { (it / st.fontSize * 1000.0).coerceIn(-500.0, 5000.0) } ?: 0.0,
             )
             return common(n, e, props, st)
         }

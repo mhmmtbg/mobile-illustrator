@@ -86,6 +86,16 @@ class RoundTripTest {
         near(1.0, (st.paint as Paint.Solid).color.a)
     }
 
+    @Test
+    fun letterSpacingSurvivesSaving() {
+        val t = TextNode(text = "ARALIK", fontSize = 40.0, tracking = 250.0, transform = Matrix.translate(20.0, 80.0))
+        val back = roundTrip(single(t)).layers.single().children.single() as TextNode
+        assertEquals("ARALIK", back.text)
+        near(250.0, back.tracking)
+        val plain = roundTrip(single(t.copy(tracking = 0.0))).layers.single().children.single() as TextNode
+        near(0.0, plain.tracking)
+    }
+
     /** Başka programların PDF'lerindeki "Locked" listesi düzenleme kilidi değildir; öyle sayılırsa hiçbir şey seçilemez. */
     @Test
     fun lockListOfForeignFilesIsNotAnEditLock() {

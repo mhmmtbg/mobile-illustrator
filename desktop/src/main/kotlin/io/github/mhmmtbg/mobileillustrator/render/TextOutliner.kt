@@ -24,10 +24,11 @@ object TextOutliner {
         DocumentRenderer.forEachLine(node, font) { line, x, y ->
             val glyphs = font.getStringGlyphs(line)
             val widths = font.getWidths(glyphs)
-            var pen = x
+            val extra = DocumentRenderer.letterGap(node)
+            var pen = x + extra / 2
             for (i in glyphs.indices) {
                 font.getPath(glyphs[i])?.let { glyph -> path.addPath(glyph, Matrix33.makeTranslate(pen, y)) }
-                pen += widths[i]
+                pen += widths[i] + extra
             }
         }
         return PathBoolean.toSubPaths(path)
@@ -36,6 +37,6 @@ object TextOutliner {
     /** Ölçülen metin genişliği (yerel birim); çok satırlıysa en geniş satır. */
     fun measure(node: TextNode): Double {
         val font = DocumentRenderer.fontFor(node.copy(measuredWidth = null))
-        return node.text.split('\n').maxOfOrNull { font.measureTextWidth(it).toDouble() } ?: 0.0
+        return node.text.split('\n').maxOfOrNull { DocumentRenderer.lineWidth(node, font, it).toDouble() } ?: 0.0
     }
 }

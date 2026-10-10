@@ -507,6 +507,8 @@ class DocumentRenderer {
             paint.typeface = typefaceFor(node)
             paint.textSize = node.fontSize.toFloat()
             paint.textScaleX = 1f
+            // Harf aralığı: Android "em" cinsinden ister; model font boyutunun binde birini tutar.
+            paint.letterSpacing = (node.tracking / 1000.0).toFloat()
             val want = node.measuredWidth
             if (want != null && want > 0.0 && node.text.isNotBlank() && node.text.indexOf('\n') < 0) {
                 val have = paint.measureText(node.text)

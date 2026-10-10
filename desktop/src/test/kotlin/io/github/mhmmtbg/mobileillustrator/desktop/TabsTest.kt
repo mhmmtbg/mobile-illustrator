@@ -6,6 +6,12 @@ import io.github.mhmmtbg.mobileillustrator.editor.BundledFonts
 import io.github.mhmmtbg.mobileillustrator.editor.EditorViewModel
 import io.github.mhmmtbg.mobileillustrator.editor.Tool
 import io.github.mhmmtbg.mobileillustrator.model.Vec2
+import io.github.mhmmtbg.mobileillustrator.model.Rgba
+import io.github.mhmmtbg.mobileillustrator.model.TextNode
+import io.github.mhmmtbg.mobileillustrator.model.colorGroups
+import io.github.mhmmtbg.mobileillustrator.model.findNode
+import io.github.mhmmtbg.mobileillustrator.editor.TextPrompt
+import io.github.mhmmtbg.mobileillustrator.render.TextOutliner
 import io.github.mhmmtbg.mobileillustrator.render.DocumentRenderer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -196,5 +202,48 @@ class TabsTest {
             for (ch in "ğĞşŞıİöÖüÜçÇ") assertTrue(face.getUTF32Glyph(ch.code).toInt() != 0, "$name fontunda '$ch' yok")
             assertNotNull(javaClass.classLoader.getResource("fonts/licenses/" + name.replace(" ", "") + ".txt"), "lisans metni eksik: $name")
         }
+    }
+
+    @Test
+    fun coloursCanBeSelectedAndChangedEverywhereAtOnce() {
+        val s = start()
+        val vm = s.vm
+        s.ui { vm.openSample() }
+        s.idle()
+        val groups = vm.state.document.colorGroups()
+        assertTrue(groups.size >= 5, "örnek dosyada birkaç renk olmalı: ${groups.size}")
+        val top = groups.first()
+        s.ui { vm.toggleColorView(); vm.selectColor(top.rgb) }
+        assertTrue(vm.state.colorView && vm.state.layersOpen)
+        assertEquals(top.nodeIds.toSet(), vm.state.selection)
+        val pink = Rgba.rgb(0xFF00AA)
+        s.ui { vm.recolor(top.rgb, pink) }
+        val after = vm.state.document.colorGroups()
+        assertTrue(after.none { it.rgb == top.rgb })
+        assertTrue(after.first { it.rgb == 0xFF00AA }.nodeIds.containsAll(top.nodeIds))
+        // Tek bir geri al adımıyla hepsi eski rengine döner.
+        s.ui { vm.undo() }
+        assertEquals(groups.map { it.rgb }, vm.state.document.colorGroups().map { it.rgb })
+    }
+
+    @Test
+    fun letterSpacingWidensTheTextAndIsEditable() {
+        DesktopDocumentIo(newRoot())
+        val plain = TextNode(text = "HARF", fontSize = 100.0)
+        val wide = plain.copy(tracking = 500.0)
+        fun width(n: TextNode) = TextOutliner.outline(n).flatMap { it.anchors }.let { a -> a.maxOf { it.point.x } - a.minOf { it.point.x } }
+        // Dört harf, üç aralık: her aralık font boyutunun yarısı kadar açılır.
+        assertEquals(width(plain) + 150.0, width(wide), 2.0)
+        assertEquals(TextOutliner.measure(plain) + 200.0, TextOutliner.measure(wide), 1.0)
+
+        val s = start()
+        val vm = s.vm
+        s.ui { vm.confirmText(TextPrompt(nodeId = null, position = Vec2(100.0, 500.0), text = "Aralık", fontSize = 80.0, tracking = 120.0)) }
+        val id = vm.state.selection.single()
+        assertEquals(120.0, (vm.state.document.findNode(id) as TextNode).tracking)
+        s.ui { vm.editSelectedText() }
+        assertEquals(120.0, vm.state.textPrompt!!.tracking)
+        s.ui { vm.confirmText(vm.state.textPrompt!!.copy(tracking = -40.0)) }
+        assertEquals(-40.0, (vm.state.document.findNode(id) as TextNode).tracking)
     }
 }

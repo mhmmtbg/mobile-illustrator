@@ -353,6 +353,16 @@ object L10n {
         "Yapıştırıldı" to "Pasted",
         "Çoklu seçim" to "Multi-select",
         "Seçim eylemleri" to "Selection actions",
+        "Renkler" to "Colours",
+        "Renklere göre grupla" to "Group by colour",
+        "Belgede renkli nesne yok" to "No coloured objects in the document",
+        "%s rengi, %s nesne" to "Colour %s, %s objects",
+        "%s dolgu, %s kontur" to "%s fills, %s strokes",
+        "%s rengini değiştir" to "Change colour %s",
+        "%s nesnenin rengi değişti" to "Colour changed on %s objects",
+        "Harf aralığı" to "Letter spacing",
+        "Satır" to "Line",
+        "Harf" to "Letter",
     )
 }
 

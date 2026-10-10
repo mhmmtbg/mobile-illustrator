@@ -247,6 +247,7 @@ object SvgExporter {
             sb.append(" font-family=\"").append(esc(n.fontFamily)).append("\" font-size=\"").append(num(n.fontSize)).append('"')
             if (n.bold) sb.append(" font-weight=\"bold\"")
             if (n.italic) sb.append(" font-style=\"italic\"")
+            if (n.tracking != 0.0) sb.append(" letter-spacing=\"").append(num(n.tracking / 1000.0 * n.fontSize)).append('"')
             n.measuredWidth?.takeIf { it > 0 && n.text.length > 1 && n.text.indexOf('\n') < 0 }?.let {
                 sb.append(" textLength=\"").append(num(it)).append("\" lengthAdjust=\"spacingAndGlyphs\"")
             }

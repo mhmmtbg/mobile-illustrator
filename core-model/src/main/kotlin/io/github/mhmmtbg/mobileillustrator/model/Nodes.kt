@@ -125,6 +125,8 @@ data class TextNode(
     val outline: List<SubPath>? = null,
     /** Metin eğme (yay, dalga…); `null` ise metin düzdür. */
     val warp: TextWarp? = null,
+    /** Harf aralığı, font boyutunun binde biri cinsinden (Illustrator'daki gibi); eksi değer harfleri sıkıştırır. */
+    val tracking: Double = 0.0,
 ) : Node {
     /** Yerel uzaydaki yaklaşık kutu (eğme dahil). */
     fun localBounds(): Rect {
@@ -136,7 +138,8 @@ data class TextNode(
     fun flatBounds(): Rect {
         outline?.mapNotNull { it.bounds() }?.reduceOrNull(Rect::union)?.let { return it }
         val lines = text.split('\n')
-        val w = measuredWidth ?: ((lines.maxOfOrNull { it.length } ?: 0) * fontSize * 0.55)
+        val longest = lines.maxOfOrNull { it.length } ?: 0
+        val w = measuredWidth ?: (longest * fontSize * (0.55 + tracking / 1000.0)).coerceAtLeast(0.0)
         val left = when (align) { TextAlign.Start -> 0.0; TextAlign.Center -> -w / 2; TextAlign.End -> -w }
         return Rect(left, -fontSize * 0.8, left + w, fontSize * 0.25 + (lines.size - 1) * fontSize * lineHeight)
     }

@@ -371,6 +371,7 @@ object AiImporter {
                     ?: io.github.mhmmtbg.mobileillustrator.model.TextAlign.Start,
                 lineHeight = t.lineHeight,
                 warp = warp,
+                tracking = t.tracking.coerceIn(-500.0, 5000.0),
             )
         }
     }
